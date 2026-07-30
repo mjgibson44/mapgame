@@ -1,0 +1,7 @@
+# Cloudflare Pages cache rules.
+# There is no build step (the site deploys via Cloudflare's Git integration),
+# so asset URLs never change between deploys. Everything must therefore be
+# revalidated on each load: browsers send a conditional request and get a
+# fast 304 when nothing changed, and fresh files immediately after a deploy.
+/*
+  Cache-Control: public, max-age=0, must-revalidate

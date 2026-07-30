@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  const STORAGE_KEY = "mapgame-alphabet-v1";
+  const STORAGE_KEY = "mapgame-alphabet-v2";
 
   // ---------- Normalization & lookup ----------
 
@@ -40,14 +40,16 @@
   // ---------- State ----------
 
   let state = {
-    li: 0,                 // index into LETTERS
+    li: 0,                 // index into LETTERS (letter currently being played)
     found: new Set(),      // country codes guessed correctly
-    revealed: false,       // current letter given up / revealed
+    revealed: new Set(),   // letters given up on (their misses shown)
   };
 
   function save() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ li: state.li, found: [...state.found] }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        li: state.li, found: [...state.found], revealed: [...state.revealed],
+      }));
     } catch (e) { /* storage unavailable — play without saving */ }
   }
   function load() {
@@ -55,20 +57,79 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const s = JSON.parse(raw);
-      if (typeof s.li === "number" && Array.isArray(s.found)) {
-        state.li = Math.min(s.li, LETTERS.length);
+      if (typeof s.li === "number" && Array.isArray(s.found) && Array.isArray(s.revealed)) {
+        state.li = Math.min(Math.max(0, s.li), LETTERS.length - 1);
         state.found = new Set(s.found);
+        state.revealed = new Set(s.revealed);
       }
     } catch (e) { /* ignore corrupt saves */ }
   }
   function reset() {
-    state = { li: 0, found: new Set(), revealed: false };
+    state = { li: 0, found: new Set(), revealed: new Set() };
     try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  }
+
+  // ---------- Sound effects ----------
+
+  const MUTE_KEY = "mapgame-muted";
+  let muted = false;
+  try { muted = localStorage.getItem(MUTE_KEY) === "1"; } catch (e) {}
+  let audioCtx = null;
+
+  function note(freq, type, t, dur, peak) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  // kind: "correct" (rising ding) | "wrong" (low descending buzz, real country
+  // at the wrong time) | "nomatch" (soft tick, input didn't match any country)
+  function sound(kind) {
+    if (muted) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!audioCtx) audioCtx = new Ctx();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const t = audioCtx.currentTime;
+      if (kind === "correct") {
+        note(659.25, "sine", t, 0.15, 0.14);        // E5
+        note(987.77, "sine", t + 0.09, 0.22, 0.14); // B5
+      } else if (kind === "wrong") {
+        note(196, "square", t, 0.12, 0.05);         // G3
+        note(147, "square", t + 0.1, 0.2, 0.05);    // D3
+      } else {
+        note(293.66, "triangle", t, 0.12, 0.07);    // D4 — quiet, non-judgmental
+      }
+    } catch (e) { /* audio unavailable — play silently */ }
   }
 
   const currentLetter = () => LETTERS[state.li];
   const currentCountries = () => byLetter.get(currentLetter()) || [];
   const remainingCountries = () => currentCountries().filter((c) => !state.found.has(c.code));
+
+  // A letter is complete when every country is found, and resolved when it's
+  // complete or given up — resolved letters count toward the header tally,
+  // and the game ends once every letter is resolved.
+  const isComplete = (L) => byLetter.get(L).every((c) => state.found.has(c.code));
+  const isRevealed = (L) => state.revealed.has(L);
+  const isResolved = (L) => isComplete(L) || isRevealed(L);
+  const resolvedCount = () => LETTERS.filter(isResolved).length;
+
+  function nextUnresolved(from) {
+    for (let k = 1; k <= LETTERS.length; k++) {
+      const i = (from + k) % LETTERS.length;
+      if (!isResolved(LETTERS[i])) return i;
+    }
+    return -1;
+  }
 
   // ---------- DOM ----------
 
@@ -81,7 +142,8 @@
     total: $("totalProgress"), panel: $("gamePanel"), end: $("endscreen"),
     finalScore: $("finalScore"), finalPct: $("finalPct"),
     breakdown: $("breakdown"), missedlist: $("missedlist"), playagain: $("playagain"),
-    map: $("map"),
+    map: $("map"), mute: $("muteBtn"), lettersProgress: $("lettersProgress"),
+    back: $("backBtn"), next: $("nextBtn"),
   };
 
   // ---------- Map ----------
@@ -130,19 +192,30 @@
 
   function renderStrip() {
     el.strip.innerHTML = "";
+    const gameOver = resolvedCount() === LETTERS.length;
     LETTERS.forEach((L, i) => {
-      const s = document.createElement("span");
-      s.textContent = L;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = L;
+      b.dataset.i = i;
       const list = byLetter.get(L);
       const foundHere = list.filter((c) => state.found.has(c.code)).length;
-      if (i < state.li) s.className = foundHere === list.length ? "done" : "partial";
-      else if (i === state.li && state.li < LETTERS.length) s.className = "current";
-      el.strip.appendChild(s);
+      const cls = [];
+      if (isComplete(L)) cls.push("done");
+      else if (isRevealed(L)) cls.push("given");
+      else if (foundHere > 0) cls.push("partial");
+      if (i === state.li && !(gameOver && el.panel.hidden)) cls.push("current");
+      b.className = cls.join(" ");
+      b.title = `${foundHere}/${list.length}`;
+      b.setAttribute("aria-label", `Letter ${L}: ${foundHere} of ${list.length} found`);
+      el.strip.appendChild(b);
     });
   }
 
   function renderTotal() {
     el.total.textContent = `${state.found.size} / ${COUNTRIES.length} countries`;
+    el.lettersProgress.innerHTML =
+      `<b>${resolvedCount()} / ${LETTERS.length}</b><small>letters complete</small>`;
   }
 
   function renderLetter() {
@@ -162,7 +235,7 @@
       s.textContent = c.name;
       el.chips.appendChild(s);
     }
-    if (state.revealed) {
+    if (isRevealed(L)) {
       for (const c of list) {
         if (state.found.has(c.code)) continue;
         const s = document.createElement("span");
@@ -172,10 +245,10 @@
       }
     }
 
-    el.guess.disabled = state.revealed;
-    el.skip.textContent = state.revealed
-      ? "Next letter →"
-      : "I give up on this letter — reveal & next →";
+    el.guess.disabled = isResolved(L);
+    const gameOver = resolvedCount() === LETTERS.length;
+    el.skip.textContent = gameOver ? "See final results →" : "Reveal answers";
+    el.skip.disabled = !gameOver && isResolved(L);
     renderStrip();
     renderTotal();
   }
@@ -190,25 +263,20 @@
   let sugItems = [];
   let sugActive = -1;
 
+  // Show a single suggestion, and only after 3 typed letters — showing more
+  // would hand out answers (e.g. "chi" revealing both China and Chile).
   function matchSuggestions(q) {
     const nq = normalize(q);
-    if (nq.length < 2) return [];
-    const out = [];
+    if (nq.length < 3) return [];
     for (const c of remainingCountries()) {
-      let matchedForm = null;
       for (const form of [c.name, ...(c.aliases || [])]) {
         const nf = normalize(form);
         if (nf.startsWith(nq) || nf.split(" ").some((w) => w.startsWith(nq))) {
-          matchedForm = form;
-          break;
+          return [{ c, via: form === c.name ? null : form }];
         }
       }
-      if (matchedForm !== null) {
-        out.push({ c, via: matchedForm === c.name ? null : matchedForm });
-        if (out.length >= 8) break;
-      }
     }
-    return out;
+    return [];
   }
 
   function renderSuggestions() {
@@ -246,20 +314,22 @@
   function acceptCountry(c, viaVoice) {
     const L = currentLetter();
     if (state.found.has(c.code)) {
-      setFeedback(`Already got ${c.name}!`, "info");
+      setFeedback(`Already got ${c.name}!`, "info"); // repeat, not a wrong guess — no sound
       return;
     }
     if (letterOf(c) !== L) {
+      sound("wrong");
       setFeedback(`${c.name} starts with “${letterOf(c)}” — you're on “${L}”.`, "err");
       wiggle();
       return;
     }
-    if (state.revealed) {
+    if (isRevealed(L)) {
       setFeedback(`“${L}” is already revealed — hit “Next letter” to move on.`, "info");
       return;
     }
     state.found.add(c.code);
     save();
+    sound("correct");
     flashCountry(c.code);
     paintMap();
     renderLetter();
@@ -280,6 +350,7 @@
       closeSuggestions();
       acceptCountry(c, false);
     } else {
+      sound("nomatch");
       setFeedback(`“${text.trim()}” isn't a country we recognize — keep trying!`, "err");
       wiggle();
     }
@@ -293,22 +364,32 @@
 
   let advanceTimer = null;
 
-  function advance() {
+  function gotoLetter(i) {
     if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
-    state.revealed = false;
-    state.li += 1;
+    state.li = i;
     save();
-    if (state.li >= LETTERS.length) { showEnd(); return; }
+    el.end.hidden = true;
+    el.panel.hidden = false;
     setFeedback("", "info");
     el.guess.value = "";
     closeSuggestions();
     renderLetter();
-    el.guess.focus();
+    // While the mic is on, voice is the input method — don't steal focus
+    // (focusing would pop the keyboard on mobile).
+    if (!listening && !isResolved(currentLetter())) el.guess.focus();
+  }
+
+  function advance() {
+    if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
+    const next = nextUnresolved(state.li);
+    if (next === -1) { showEnd(); return; }
+    gotoLetter(next);
   }
 
   // ---------- End screen ----------
 
   function showEnd() {
+    if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
     stopVoice();
     el.panel.hidden = true;
     el.end.hidden = false;
@@ -385,6 +466,7 @@
           if (hits.length) {
             for (const c of hits) acceptCountry(c, true);
           } else {
+            sound("nomatch");
             setFeedback(`Heard “${transcript.trim()}” — no country match.`, "info");
           }
         } else {
@@ -425,7 +507,12 @@
 
   // ---------- Events ----------
 
+  let blurCloseTimer = null;
+
   el.guess.addEventListener("input", () => {
+    // A pending blur-close (e.g. from clicking a letter) must not wipe
+    // suggestions for text typed after focus returned.
+    if (blurCloseTimer) { clearTimeout(blurCloseTimer); blurCloseTimer = null; }
     sugItems = matchSuggestions(el.guess.value);
     sugActive = sugItems.length ? 0 : -1;
     renderSuggestions();
@@ -449,17 +536,52 @@
     }
   });
 
-  el.guess.addEventListener("blur", () => setTimeout(closeSuggestions, 150));
+  el.guess.addEventListener("blur", () => {
+    blurCloseTimer = setTimeout(closeSuggestions, 150);
+  });
+  el.guess.addEventListener("focus", () => {
+    if (blurCloseTimer) { clearTimeout(blurCloseTimer); blurCloseTimer = null; }
+  });
+
+  el.strip.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-i]");
+    if (b) gotoLetter(Number(b.dataset.i));
+  });
+
+  el.back.addEventListener("click", () => {
+    gotoLetter((state.li - 1 + LETTERS.length) % LETTERS.length);
+  });
+  el.next.addEventListener("click", () => {
+    gotoLetter((state.li + 1) % LETTERS.length);
+  });
 
   el.skip.addEventListener("click", () => {
-    if (state.revealed) { advance(); }
-    else if (remainingCountries().length === 0) { advance(); }
-    else {
-      state.revealed = true;
-      const n = remainingCountries().length;
-      setFeedback(`Revealed ${n} missed ${n === 1 ? "country" : "countries"}.`, "info");
-      renderLetter();
+    const L = currentLetter();
+    if (resolvedCount() === LETTERS.length) { showEnd(); return; }
+    if (isResolved(L)) return;
+    state.revealed.add(L);
+    save();
+    const n = remainingCountries().length;
+    setFeedback(`Revealed ${n} missed ${n === 1 ? "country" : "countries"}.`, "info");
+    renderLetter();
+    if (resolvedCount() === LETTERS.length) {
+      // that was the last open letter — show results after a beat so the
+      // revealed answers are readable first
+      advanceTimer = setTimeout(showEnd, 1800);
     }
+  });
+
+  function renderMute() {
+    el.mute.textContent = muted ? "🔇" : "🔊";
+    el.mute.setAttribute("aria-pressed", String(muted));
+    el.mute.title = muted ? "Unmute sounds" : "Mute sounds";
+    el.mute.setAttribute("aria-label", el.mute.title);
+  }
+
+  el.mute.addEventListener("click", () => {
+    muted = !muted;
+    try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (e) {}
+    renderMute();
   });
 
   el.playagain.addEventListener("click", () => {
@@ -478,6 +600,10 @@
   load();
   paintMap();
   setupVoice();
-  if (state.li >= LETTERS.length) showEnd();
-  else { renderLetter(); el.guess.focus(); }
+  renderMute();
+  if (LETTERS.every(isResolved)) showEnd();
+  else {
+    renderLetter();
+    if (!isResolved(currentLetter())) el.guess.focus();
+  }
 })();
