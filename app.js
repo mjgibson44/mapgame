@@ -66,6 +66,48 @@
     try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
   }
 
+  // ---------- Sound effects ----------
+
+  const MUTE_KEY = "mapgame-muted";
+  let muted = false;
+  try { muted = localStorage.getItem(MUTE_KEY) === "1"; } catch (e) {}
+  let audioCtx = null;
+
+  function note(freq, type, t, dur, peak) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  // kind: "correct" (rising ding) | "wrong" (low descending buzz, real country
+  // at the wrong time) | "nomatch" (soft tick, input didn't match any country)
+  function sound(kind) {
+    if (muted) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!audioCtx) audioCtx = new Ctx();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const t = audioCtx.currentTime;
+      if (kind === "correct") {
+        note(659.25, "sine", t, 0.15, 0.14);        // E5
+        note(987.77, "sine", t + 0.09, 0.22, 0.14); // B5
+      } else if (kind === "wrong") {
+        note(196, "square", t, 0.12, 0.05);         // G3
+        note(147, "square", t + 0.1, 0.2, 0.05);    // D3
+      } else {
+        note(293.66, "triangle", t, 0.12, 0.07);    // D4 — quiet, non-judgmental
+      }
+    } catch (e) { /* audio unavailable — play silently */ }
+  }
+
   const currentLetter = () => LETTERS[state.li];
   const currentCountries = () => byLetter.get(currentLetter()) || [];
   const remainingCountries = () => currentCountries().filter((c) => !state.found.has(c.code));
@@ -81,7 +123,7 @@
     total: $("totalProgress"), panel: $("gamePanel"), end: $("endscreen"),
     finalScore: $("finalScore"), finalPct: $("finalPct"),
     breakdown: $("breakdown"), missedlist: $("missedlist"), playagain: $("playagain"),
-    map: $("map"),
+    map: $("map"), mute: $("muteBtn"),
   };
 
   // ---------- Map ----------
@@ -246,10 +288,11 @@
   function acceptCountry(c, viaVoice) {
     const L = currentLetter();
     if (state.found.has(c.code)) {
-      setFeedback(`Already got ${c.name}!`, "info");
+      setFeedback(`Already got ${c.name}!`, "info"); // repeat, not a wrong guess — no sound
       return;
     }
     if (letterOf(c) !== L) {
+      sound("wrong");
       setFeedback(`${c.name} starts with “${letterOf(c)}” — you're on “${L}”.`, "err");
       wiggle();
       return;
@@ -260,6 +303,7 @@
     }
     state.found.add(c.code);
     save();
+    sound("correct");
     flashCountry(c.code);
     paintMap();
     renderLetter();
@@ -280,6 +324,7 @@
       closeSuggestions();
       acceptCountry(c, false);
     } else {
+      sound("nomatch");
       setFeedback(`“${text.trim()}” isn't a country we recognize — keep trying!`, "err");
       wiggle();
     }
@@ -303,7 +348,9 @@
     el.guess.value = "";
     closeSuggestions();
     renderLetter();
-    el.guess.focus();
+    // While the mic is on, voice is the input method — don't steal focus
+    // (focusing would pop the keyboard on mobile).
+    if (!listening) el.guess.focus();
   }
 
   // ---------- End screen ----------
@@ -385,6 +432,7 @@
           if (hits.length) {
             for (const c of hits) acceptCountry(c, true);
           } else {
+            sound("nomatch");
             setFeedback(`Heard “${transcript.trim()}” — no country match.`, "info");
           }
         } else {
@@ -462,6 +510,19 @@
     }
   });
 
+  function renderMute() {
+    el.mute.textContent = muted ? "🔇" : "🔊";
+    el.mute.setAttribute("aria-pressed", String(muted));
+    el.mute.title = muted ? "Unmute sounds" : "Mute sounds";
+    el.mute.setAttribute("aria-label", el.mute.title);
+  }
+
+  el.mute.addEventListener("click", () => {
+    muted = !muted;
+    try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (e) {}
+    renderMute();
+  });
+
   el.playagain.addEventListener("click", () => {
     reset();
     el.end.hidden = true;
@@ -478,6 +539,7 @@
   load();
   paintMap();
   setupVoice();
+  renderMute();
   if (state.li >= LETTERS.length) showEnd();
   else { renderLetter(); el.guess.focus(); }
 })();

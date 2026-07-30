@@ -20,6 +20,11 @@ get a final score out of 197 and a per-letter breakdown of what you missed.
 - **Aliases accepted** — USA, UK, Burma, Swaziland, Czechia, Cabo Verde,
   Côte d'Ivoire, DRC, etc. all count. Matching ignores case, accents, and
   punctuation.
+- **Sound effects** — a rising ding for a correct guess, a low buzz for a
+  real country guessed at the wrong time, and a soft tick when input doesn't
+  match any country (including mic mishears). All synthesized with the Web
+  Audio API — no audio files. The 🔊 button in the top right mutes them, and
+  the setting is remembered.
 - **Progress is saved** — refresh the page and you pick up where you left off.
 - **Give up** — if you're stuck on a letter, reveal the ones you missed and
   move on; they count against your final score.

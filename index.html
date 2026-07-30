@@ -59,10 +59,15 @@
   }
   .wrap { max-width: 1200px; margin: 0 auto; padding: 16px 20px 40px; }
 
-  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 6px 0 14px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 6px 0 14px; }
   header h1 { font-family: var(--display); font-size: 24px; margin: 0; letter-spacing: 0.2px; }
   header .mode { font-size: 13px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 1.5px; }
   header .total { margin-left: auto; font-size: 14px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  #muteBtn {
+    width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 9px;
+    background: var(--card); font-size: 17px; line-height: 1; flex-shrink: 0;
+  }
+  #muteBtn:hover { border-color: var(--ink-soft); }
 
   /* Alphabet progress strip */
   .letters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; }
@@ -208,6 +213,7 @@
     <h1>MapGame</h1>
     <span class="mode">Alphabet Mode</span>
     <span class="total" id="totalProgress"></span>
+    <button id="muteBtn" title="Mute sounds" aria-label="Mute sounds" aria-pressed="false">🔊</button>
   </header>
 
   <div class="letters" id="letterStrip"></div>
