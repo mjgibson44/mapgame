@@ -1,0 +1,49 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+env:
+  PROJECT_NAME: mapgame
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check Cloudflare secrets are configured
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] || [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "::error::Missing CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID repository secrets — see the Deployment section of the README for one-time setup."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Stage site files
+        run: |
+          mkdir dist
+          cp index.html app.js countries.js map-data.js dist/
+
+      - name: Ensure Pages project exists
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Fails harmlessly if the project already exists; real problems
+        # surface in the deploy step below.
+        run: npx wrangler@4 pages project create "$PROJECT_NAME" --production-branch=main || true
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Pushes to main deploy production; any other branch gets a
+        # preview deployment with its own URL (printed in the log).
+        run: npx wrangler@4 pages deploy dist --project-name="$PROJECT_NAME" --branch="${GITHUB_REF_NAME}"

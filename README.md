@@ -39,6 +39,33 @@ open index.html            # or just double-click it
 python3 -m http.server     # then visit http://localhost:8000
 ```
 
+## Deployment
+
+Every push auto-deploys to [Cloudflare Pages](https://pages.cloudflare.com/)
+via `.github/workflows/deploy.yml` — pushes to `main` go to production
+(`https://mapgame.pages.dev`), pushes to any other branch get a preview
+deployment whose URL is printed in the GitHub Actions log.
+
+One-time setup (the workflow fails with a clear error until this is done):
+
+1. In the [Cloudflare dashboard](https://dash.cloudflare.com/), copy your
+   **Account ID** (Workers & Pages → overview, right-hand column).
+2. Create an **API token** at My Profile → API Tokens → Create Token, using
+   the "Edit Cloudflare Workers" template or a custom token with
+   **Account → Cloudflare Pages → Edit** permission.
+3. In the GitHub repo, add both as Actions secrets
+   (Settings → Secrets and variables → Actions):
+   `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
+
+The first run creates the Pages project automatically. If the `mapgame`
+name is already taken on pages.dev, change `PROJECT_NAME` at the top of the
+workflow.
+
+Alternative: skip the workflow entirely and use Cloudflare's own Git
+integration (Workers & Pages → Create → Pages → Connect to Git, no build
+command, output directory `/`). If you go that route, delete
+`.github/workflows/deploy.yml` so you don't deploy twice.
+
 ## The country list
 
 197 countries: the 193 UN member states plus Vatican City, Palestine,
