@@ -45,38 +45,20 @@ python3 -m http.server     # then visit http://localhost:8000
 
 ## Deployment
 
-Every push auto-deploys to [Cloudflare Pages](https://pages.cloudflare.com/)
-via `.github/workflows/deploy.yml` — pushes to `main` go to production
-(`https://mapgame.pages.dev`), pushes to any other branch get a preview
-deployment whose URL is printed in the GitHub Actions log.
+The repo is connected to [Cloudflare Pages](https://pages.cloudflare.com/)
+via its Git integration: **pushes to `main` deploy to production**
+(map.mjgibson.com / mapgame-9y8.pages.dev), and pushes to any other branch
+create a preview deployment with its own URL, visible in the Cloudflare
+dashboard under Deployments. To ship a feature branch to production, merge
+it into `main`.
 
-One-time setup (the workflow fails with a clear error until this is done):
+### Caching
 
-1. In the [Cloudflare dashboard](https://dash.cloudflare.com/), copy your
-   **Account ID** (Workers & Pages → overview, right-hand column).
-2. Create an **API token** at My Profile → API Tokens → Create Token, using
-   the "Edit Cloudflare Workers" template or a custom token with
-   **Account → Cloudflare Pages → Edit** permission.
-3. In the GitHub repo, add both as Actions secrets
-   (Settings → Secrets and variables → Actions):
-   `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
-
-The first run creates the Pages project automatically. If the `mapgame`
-name is already taken on pages.dev, change `PROJECT_NAME` at the top of the
-workflow.
-
-Alternative: skip the workflow entirely and use Cloudflare's own Git
-integration (Workers & Pages → Create → Pages → Connect to Git, no build
-command, output directory `/`). If you go that route, delete
-`.github/workflows/deploy.yml` so you don't deploy twice.
-
-### Cache busting
-
-Users always get the latest version after a deploy: `_headers` tells
-browsers to revalidate HTML on every load, and the deploy workflow stamps
-the script URLs in `index.html` with the commit SHA (`app.js?v=<sha>`), so
-a fresh page can never pair with stale cached JavaScript. The JS files
-themselves are cached for a year — each deploy references new URLs.
+`_headers` sets `Cache-Control: max-age=0, must-revalidate` on everything:
+browsers revalidate on each load (a fast 304 when nothing changed) and pick
+up new deploys immediately — no stale-JS-with-fresh-HTML mismatches. If the
+site ever gains a build step, switch to fingerprinted asset URLs plus
+long-lived caching instead.
 
 ## The country list
 
