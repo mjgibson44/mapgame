@@ -30,7 +30,8 @@ resolved you get a final score out of 197 and a per-letter breakdown.
   real country guessed at the wrong time, and a soft tick when input doesn't
   match any country (including mic mishears). All synthesized with the Web
   Audio API — no audio files. The 🔊 button in the top right mutes them, and
-  the setting is remembered.
+  the setting is remembered; unmuting plays the ding so you can confirm audio
+  works. Note: iPhones mute web audio while the physical silent switch is on.
 - **Progress is saved** — refresh the page and you pick up where you left off.
 
 ## Running it

@@ -89,15 +89,29 @@
     o.stop(t + dur + 0.05);
   }
 
-  // kind: "correct" (rising ding) | "wrong" (low descending buzz, real country
-  // at the wrong time) | "nomatch" (soft tick, input didn't match any country)
-  function sound(kind) {
-    if (muted) return;
+  function ensureAudio() {
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
       if (!audioCtx) audioCtx = new Ctx();
       if (audioCtx.state === "suspended") audioCtx.resume();
+    } catch (e) { /* audio unavailable */ }
+  }
+
+  // Browsers (iOS Safari especially) only start audio from inside a real user
+  // gesture. Voice-driven guesses arrive in recognition callbacks — not
+  // gestures — so unlock the context on every tap/keypress; this also
+  // re-resumes it after iOS suspends audio when the page is backgrounded.
+  ["pointerdown", "keydown"].forEach((ev) =>
+    document.addEventListener(ev, ensureAudio, { capture: true, passive: true }));
+
+  // kind: "correct" (rising ding) | "wrong" (low descending buzz, real country
+  // at the wrong time) | "nomatch" (soft tick, input didn't match any country)
+  function sound(kind) {
+    if (muted) return;
+    try {
+      ensureAudio();
+      if (!audioCtx) return;
       const t = audioCtx.currentTime;
       if (kind === "correct") {
         note(659.25, "sine", t, 0.15, 0.14);        // E5
@@ -582,6 +596,8 @@
     muted = !muted;
     try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (e) {}
     renderMute();
+    // audible confirmation on unmute — also proves sound works on this device
+    if (!muted) sound("correct");
   });
 
   el.playagain.addEventListener("click", () => {
