@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MapGame — Alphabet Mode</title>
+<style>
+  :root {
+    --ink: #111;
+    --ink-soft: #444;
+    --ink-faint: #888;
+    --on-ink: #fff;          /* text placed on top of --ink surfaces */
+    --paper: #fafaf8;
+    --card: #ffffff;
+    --line: #e2e2de;
+    --good: #1a7f37;
+    --bad: #b42318;
+    --flash: #f2c94c;
+    --map-land: #ffffff;
+    --map-stroke: #555;
+    --map-guessed: #1c1c1c;
+    --display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ecebe3;
+      --ink-soft: #c2c1b8;
+      --ink-faint: #8b8a81;
+      --on-ink: #131311;
+      --paper: #131311;
+      --card: #1c1c1a;
+      --line: #32322e;
+      --good: #5cbd7d;
+      --bad: #e5695c;
+      --map-land: #1c1c1a;
+      --map-stroke: #9b9a90;
+      --map-guessed: #ecebe3;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #ecebe3; --ink-soft: #c2c1b8; --ink-faint: #8b8a81; --on-ink: #131311;
+    --paper: #131311; --card: #1c1c1a; --line: #32322e;
+    --good: #5cbd7d; --bad: #e5695c;
+    --map-land: #1c1c1a; --map-stroke: #9b9a90; --map-guessed: #ecebe3;
+  }
+  :root[data-theme="light"] {
+    --ink: #111; --ink-soft: #444; --ink-faint: #888; --on-ink: #fff;
+    --paper: #fafaf8; --card: #ffffff; --line: #e2e2de;
+    --good: #1a7f37; --bad: #b42318;
+    --map-land: #ffffff; --map-stroke: #555; --map-guessed: #1c1c1c;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px 20px 40px; }
+
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 6px 0 14px; }
+  header h1 { font-family: var(--display); font-size: 24px; margin: 0; letter-spacing: 0.2px; }
+  header .mode { font-size: 13px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 1.5px; }
+  header .total { margin-left: auto; font-size: 14px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+  /* Alphabet progress strip */
+  .letters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; }
+  .letters span {
+    width: 30px; height: 30px; display: grid; place-items: center;
+    border: 1px solid var(--line); border-radius: 6px;
+    font-size: 13px; font-weight: 600; color: var(--ink-faint);
+    background: var(--card); user-select: none;
+  }
+  .letters span.done { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+  .letters span.partial { background: var(--line); border-color: var(--line); color: var(--ink); }
+  .letters span.current { border: 2px solid var(--ink); color: var(--ink); transform: scale(1.12); }
+
+  .layout { display: grid; grid-template-columns: 390px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 950px) { .layout { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .letter-row { display: flex; align-items: center; gap: 16px; }
+  .big-letter {
+    font-family: var(--display);
+    font-size: 60px; font-weight: 700; line-height: 1; width: 84px; height: 84px;
+    display: grid; place-items: center; border: 2px solid var(--ink); border-radius: 14px;
+    flex-shrink: 0;
+  }
+  .counts { font-size: 15px; color: var(--ink-soft); line-height: 1.5; }
+  .counts b { color: var(--ink); font-size: 17px; }
+  .counts .nums { display: flex; gap: 14px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .counts .nums span b { display: block; font-size: 22px; }
+
+  .inputrow { display: flex; gap: 8px; margin-top: 18px; position: relative; }
+  #guess {
+    flex: 1; font-size: 17px; padding: 11px 14px; border: 1.5px solid var(--ink-soft);
+    border-radius: 10px; outline: none; background: var(--card); color: var(--ink); min-width: 0;
+  }
+  #guess:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(0,0,0,0.07); }
+  #guess.shake { animation: shake 0.3s; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+
+  button { font-family: inherit; cursor: pointer; }
+  #micBtn {
+    width: 46px; border: 1.5px solid var(--ink-soft); border-radius: 10px; background: var(--card);
+    font-size: 20px; flex-shrink: 0;
+  }
+  #micBtn.listening { background: var(--ink); border-color: var(--ink); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{box-shadow: 0 0 0 0 rgba(0,0,0,0.25)} 50%{box-shadow: 0 0 0 6px rgba(0,0,0,0.08)} }
+  #micBtn[hidden] { display: none; }
+
+  /* Autocomplete dropdown */
+  #suggestions {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 54px; z-index: 20;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; display: none;
+  }
+  #suggestions.open { display: block; }
+  #suggestions div { padding: 10px 14px; font-size: 15px; cursor: pointer; }
+  #suggestions div.active, #suggestions div:hover { background: var(--ink); color: var(--on-ink); }
+  #suggestions div small { color: inherit; opacity: 0.6; margin-left: 6px; }
+
+  #feedback { min-height: 24px; margin-top: 10px; font-size: 14px; }
+  #feedback.ok { color: var(--good); }
+  #feedback.err { color: var(--bad); }
+  #feedback.info { color: var(--ink-faint); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .chips span {
+    font-size: 13px; padding: 4px 10px; border-radius: 999px;
+    background: var(--ink); color: var(--on-ink);
+  }
+  .chips span.missed { background: var(--card); color: var(--bad); border: 1px solid var(--bad); text-decoration: line-through; }
+
+  .actions { margin-top: 16px; display: flex; gap: 8px; }
+  .actions button {
+    font-size: 14px; padding: 9px 14px; border-radius: 10px;
+    border: 1.5px solid var(--ink-soft); background: var(--card); color: var(--ink);
+  }
+  .actions button:hover { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+
+  /* Map */
+  .mapbox { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  #map { width: 100%; height: auto; display: block; }
+  #map .land { fill: var(--map-land); stroke: var(--map-stroke); stroke-width: 0.6; stroke-linejoin: round; transition: fill 0.5s; }
+  #map .land.guessed { fill: var(--map-guessed); }
+  #map .land.flash { fill: var(--flash); transition: none; }
+  #map .dot { fill: var(--map-land); stroke: var(--map-stroke); stroke-width: 0.8; transition: fill 0.5s; }
+  #map .dot.guessed { fill: var(--map-guessed); }
+  #map .dot.flash { fill: var(--flash); transition: none; }
+
+  /* End screen */
+  #endscreen { text-align: center; }
+  #endscreen h2 { font-family: var(--display); font-size: 26px; margin: 4px 0 2px; }
+  #endscreen .score { font-family: var(--display); font-size: 56px; font-weight: 700; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+  #endscreen .pct { color: var(--ink-faint); margin-bottom: 16px; }
+  #breakdown { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin: 14px 0; }
+  #breakdown span {
+    width: 34px; padding: 4px 0 5px; border: 1px solid var(--line); border-radius: 6px;
+    font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums;
+  }
+  #breakdown span b { display: block; font-size: 14px; color: var(--ink); }
+  #breakdown span.full { background: var(--ink); border-color: var(--ink); }
+  #breakdown span.full b, #breakdown span.full { color: var(--on-ink); }
+  #missedlist { text-align: left; font-size: 13px; color: var(--ink-soft); max-height: 180px; overflow-y: auto; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 6px; }
+  #playagain { margin-top: 16px; font-size: 16px; padding: 12px 26px; border-radius: 10px; border: none; background: var(--ink); color: var(--on-ink); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  .hint { margin-top: 14px; font-size: 12.5px; color: var(--ink-faint); line-height: 1.5; }
+  [hidden] { display: none !important; }
+
+  /* Phones */
+  @media (max-width: 600px) {
+    .wrap { padding: 10px 12px 28px; }
+    header { padding-bottom: 10px; }
+    header h1 { font-size: 19px; }
+    header .total { font-size: 13px; }
+    .letters { gap: 3px; margin-bottom: 12px; }
+    .letters span { width: 25px; height: 25px; font-size: 11px; border-radius: 5px; }
+    .layout { gap: 14px; }
+    .panel { padding: 14px; border-radius: 12px; }
+    .letter-row { gap: 12px; }
+    .big-letter { width: 64px; height: 64px; font-size: 44px; border-radius: 11px; }
+    .counts { font-size: 13.5px; }
+    .counts b { font-size: 14.5px; }
+    .counts .nums span b { font-size: 19px; }
+    .inputrow { margin-top: 14px; }
+    #guess { font-size: 16px; padding: 12px 12px; } /* ≥16px avoids iOS zoom-on-focus */
+    #micBtn { width: 48px; }
+    #suggestions div { padding: 12px 14px; }
+    .actions button { width: 100%; padding: 12px 14px; }
+    .mapbox { padding: 6px; border-radius: 12px; }
+    #endscreen .score { font-size: 44px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>MapGame</h1>
+    <span class="mode">Alphabet Mode</span>
+    <span class="total" id="totalProgress"></span>
+  </header>
+
+  <div class="letters" id="letterStrip"></div>
+
+  <div class="layout">
+    <div>
+      <div class="panel" id="gamePanel">
+        <div class="letter-row">
+          <div class="big-letter" id="bigLetter">A</div>
+          <div class="counts">
+            <b id="letterHeadline"></b>
+            <div class="nums">
+              <span><b id="nTotal">0</b>total</span>
+              <span><b id="nFound">0</b>found</span>
+              <span><b id="nLeft">0</b>remaining</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="inputrow">
+          <input id="guess" type="text" autocomplete="off" autocapitalize="words"
+                 spellcheck="false" placeholder="Type a country…" aria-label="Country guess">
+          <button id="micBtn" title="Speak a country" aria-label="Voice input">🎤</button>
+          <div id="suggestions" role="listbox"></div>
+        </div>
+
+        <div id="feedback" class="info"></div>
+        <div class="chips" id="foundChips"></div>
+
+        <div class="actions">
+          <button id="skipBtn">I give up on this letter — reveal &amp; next →</button>
+        </div>
+        <div class="hint">
+          Type at least 2 letters for suggestions, or tap the mic and say country names.
+          Letters with no countries are skipped automatically.
+        </div>
+      </div>
+
+      <div class="panel" id="endscreen" hidden>
+        <h2>Finished! 🌍</h2>
+        <div class="score" id="finalScore"></div>
+        <div class="pct" id="finalPct"></div>
+        <div id="breakdown"></div>
+        <div id="missedlist"></div>
+        <button id="playagain">Play again</button>
+      </div>
+    </div>
+
+    <div class="mapbox">
+      <svg id="map" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="World map"></svg>
+    </div>
+  </div>
+</div>
+
+<script src="map-data.js"></script>
+<script src="countries.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
