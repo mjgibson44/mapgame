@@ -1,0 +1,9 @@
+# Cloudflare Pages cache rules.
+# HTML must always be revalidated so users pick up new deploys on refresh;
+# the JS files it references carry a per-deploy ?v=<sha> query, so they can
+# be cached forever — a new deploy references new URLs.
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
