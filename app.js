@@ -156,8 +156,10 @@
     total: $("totalProgress"), panel: $("gamePanel"), end: $("endscreen"),
     finalScore: $("finalScore"), finalPct: $("finalPct"),
     breakdown: $("breakdown"), missedlist: $("missedlist"), playagain: $("playagain"),
-    map: $("map"), mute: $("muteBtn"), lettersProgress: $("lettersProgress"),
+    map: $("map"), lettersProgress: $("lettersProgress"),
     back: $("backBtn"), next: $("nextBtn"),
+    menuBtn: $("menuBtn"), menuDropdown: $("menuDropdown"),
+    soundToggle: $("soundToggle"), resetBtn: $("resetBtn"),
   };
 
   // ---------- Map ----------
@@ -586,13 +588,34 @@
   });
 
   function renderMute() {
-    el.mute.textContent = muted ? "🔇" : "🔊";
-    el.mute.setAttribute("aria-pressed", String(muted));
-    el.mute.title = muted ? "Unmute sounds" : "Mute sounds";
-    el.mute.setAttribute("aria-label", el.mute.title);
+    el.soundToggle.textContent = muted ? "🔇 Sound: Off" : "🔊 Sound: On";
+    el.soundToggle.setAttribute("aria-checked", String(!muted));
   }
 
-  el.mute.addEventListener("click", () => {
+  // ---------- Menu ----------
+
+  function openMenu() {
+    el.menuDropdown.hidden = false;
+    el.menuBtn.setAttribute("aria-expanded", "true");
+  }
+  function closeMenu() {
+    el.menuDropdown.hidden = true;
+    el.menuBtn.setAttribute("aria-expanded", "false");
+  }
+
+  el.menuBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (el.menuDropdown.hidden) openMenu(); else closeMenu();
+  });
+  // Clicking anywhere outside (or pressing Escape) dismisses the menu.
+  document.addEventListener("click", (e) => {
+    if (!el.menuDropdown.hidden && !$("menu").contains(e.target)) closeMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !el.menuDropdown.hidden) closeMenu();
+  });
+
+  el.soundToggle.addEventListener("click", () => {
     muted = !muted;
     try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (e) {}
     renderMute();
@@ -600,15 +623,26 @@
     if (!muted) sound("correct");
   });
 
-  el.playagain.addEventListener("click", () => {
+  function resetGame() {
     reset();
+    stopVoice();
+    if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
     el.end.hidden = true;
     el.panel.hidden = false;
     paintMap();
     setFeedback("", "info");
+    el.guess.value = "";
+    closeSuggestions();
     renderLetter();
-    el.guess.focus();
+    if (!listening) el.guess.focus();
+  }
+
+  el.resetBtn.addEventListener("click", () => {
+    closeMenu();
+    resetGame();
   });
+
+  el.playagain.addEventListener("click", resetGame);
 
   // ---------- Init ----------
 
