@@ -4,14 +4,20 @@ A country-guessing game on a black-and-white world map.
 
 ## Alphabet Mode
 
-Work through the alphabet from A to Z, naming every country that starts with
-the current letter (letters with no countries — W and X — are skipped
-automatically). For each letter you can see how many countries there are,
-how many you've found, and how many remain. When you finish the alphabet you
-get a final score out of 197 and a per-letter breakdown of what you missed.
+Name every country that starts with each letter of the alphabet (letters
+with no countries — W and X — are skipped). For each letter you see how many
+countries there are, how many you've found, and how many remain; the header
+tracks letters completed and total countries found. When every letter is
+resolved you get a final score out of 197 and a per-letter breakdown.
 
-- **Autocomplete** — type 2+ letters and pick from suggestions, so you never
-  have to type a full country name.
+- **Free navigation** — click any letter in the strip to jump to it, or use
+  the ←/→ arrows. Letter chips show four states: untouched, gray = partially
+  complete, black = every country found, dashed/struck-through = revealed.
+- **Reveal answers** — stuck on a letter? Reveal its remaining countries;
+  they count against your final score.
+- **Autocomplete** — type 3+ letters for a suggestion. Only one suggestion
+  is shown at a time so the list never gives away answers ("chi" won't
+  reveal both China and Chile).
 - **Voice input** — tap the mic and say country names (uses the browser's
   Web Speech API; works in Chrome/Edge/Safari, requires mic permission).
 - **Live map** — every correct answer lights up that country on a
@@ -26,8 +32,6 @@ get a final score out of 197 and a per-letter breakdown of what you missed.
   Audio API — no audio files. The 🔊 button in the top right mutes them, and
   the setting is remembered.
 - **Progress is saved** — refresh the page and you pick up where you left off.
-- **Give up** — if you're stuck on a letter, reveal the ones you missed and
-  move on; they count against your final score.
 
 ## Running it
 
@@ -65,6 +69,14 @@ Alternative: skip the workflow entirely and use Cloudflare's own Git
 integration (Workers & Pages → Create → Pages → Connect to Git, no build
 command, output directory `/`). If you go that route, delete
 `.github/workflows/deploy.yml` so you don't deploy twice.
+
+### Cache busting
+
+Users always get the latest version after a deploy: `_headers` tells
+browsers to revalidate HTML on every load, and the deploy workflow stamps
+the script URLs in `index.html` with the commit SHA (`app.js?v=<sha>`), so
+a fresh page can never pair with stale cached JavaScript. The JS files
+themselves are cached for a year — each deploy references new URLs.
 
 ## The country list
 
