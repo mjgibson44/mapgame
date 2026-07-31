@@ -113,7 +113,7 @@ const COUNTRIES = [
   { name: "Lesotho", code: "LS" },
   { name: "Liberia", code: "LR" },
   { name: "Libya", code: "LY" },
-  { name: "Liechtenstein", code: "LI" },
+  { name: "Liechtenstein", code: "LI", aliases: ["Lichtenstein"] },
   { name: "Lithuania", code: "LT" },
   { name: "Luxembourg", code: "LU" },
   // M
