@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MapGame — Streak Mode</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="streak-mode">
+<div class="wrap">
+  <header>
+    <span class="letters-progress" id="streakScore"></span>
+    <span class="clock" id="clockBox">
+      <span id="clock">1:00</span>
+      <span class="delta" id="delta" aria-hidden="true"></span>
+    </span>
+    <div class="menu" id="menu">
+      <button id="menuBtn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
+      <div class="menu-dropdown" id="menuDropdown" role="menu" hidden>
+        <div class="menu-label">Mode</div>
+        <a href="index.html" role="menuitemradio" aria-checked="false">🔤 Alphabet</a>
+        <a href="streak.html" role="menuitemradio" aria-checked="true" class="checked">⏱ Streak</a>
+        <hr>
+        <button id="soundToggle" role="menuitemcheckbox" aria-checked="true">🔊 Sound: On</button>
+        <button id="resetBtn" role="menuitem">↺ New run</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div>
+      <div class="panel" id="startPanel">
+        <h2 class="panel-title">Streak Mode</h2>
+        <p class="rules">
+          A pin drops somewhere on a map with no borders. Name the country
+          under it before the clock runs out.
+        </p>
+        <ul class="rules-list">
+          <li><b class="good">+5s</b> for every right answer</li>
+          <li><b class="bad">−5s</b> for a wrong answer or a skip</li>
+          <li>You start with <b>60 seconds</b> — how far can you get?</li>
+        </ul>
+        <div class="best-line" id="startBest"></div>
+        <button class="primary" id="startBtn">Start</button>
+      </div>
+
+      <div class="panel" id="gamePanel" hidden>
+        <div class="prompt">Which country is under the pin?</div>
+        <div class="inputrow">
+          <input id="guess" type="text" autocomplete="off" autocapitalize="words"
+                 spellcheck="false" placeholder="Type a country…" aria-label="Country guess">
+          <button id="micBtn" title="Speak a country" aria-label="Voice input">🎤</button>
+          <div id="suggestions" role="listbox"></div>
+        </div>
+
+        <div id="feedback" class="info"></div>
+
+        <div class="actions">
+          <button id="skipBtn">Skip (−5s)</button>
+        </div>
+        <div class="hint">
+          Type at least 3 letters for a suggestion, or tap the mic and say the
+          country. Right +5s · wrong −5s · skip −5s.
+        </div>
+      </div>
+
+      <div class="panel" id="endscreen" hidden>
+        <h2>Time's up! ⏱</h2>
+        <div class="score" id="finalScore"></div>
+        <div class="pct" id="finalBest"></div>
+        <div class="chips" id="resultChips"></div>
+        <button id="playagain">Play again</button>
+      </div>
+    </div>
+
+    <div class="mapbox">
+      <svg id="map" class="borderless" xmlns="http://www.w3.org/2000/svg" role="img"
+           aria-label="World map with a pin on the mystery country"></svg>
+    </div>
+  </div>
+</div>
+
+<script src="map-data.js?v=2"></script>
+<script src="countries.js?v=2"></script>
+<script src="shared.js"></script>
+<script src="streak.js"></script>
+</body>
+</html>

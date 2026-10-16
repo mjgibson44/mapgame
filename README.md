@@ -34,6 +34,24 @@ resolved you get a final score out of 197 and a per-letter breakdown.
   works. Note: iPhones mute web audio while the physical silent switch is on.
 - **Progress is saved** — refresh the page and you pick up where you left off.
 
+## Streak Mode
+
+Race the clock: a pin drops on a world map with **no borders** (coastlines
+only), and you type the country it's sitting on.
+
+- You start with **60 seconds**. A right answer adds **+5s**, a wrong country
+  takes **−5s** (and briefly shades the country you guessed, so you learn
+  where it is), and **Skip** also costs −5s and shows you the answer.
+- Your score is how many you name before the clock hits zero; your best is
+  saved on the device.
+- The map zooms to each country's neighbourhood so small countries are
+  placeable; microstates too small to draw show as a dot under the pin.
+- Input that isn't a country at all (a typo) costs nothing. Autocomplete and
+  voice input work as in Alphabet Mode.
+- The clock pauses while the tab or app is in the background.
+
+Switch between modes from the ☰ menu.
+
 ## Running it
 
 It's a static page with no build step and no external dependencies:
@@ -43,6 +61,25 @@ open index.html            # or just double-click it
 # — or —
 python3 -m http.server     # then visit http://localhost:8000
 ```
+
+## iOS app
+
+`ios/` holds a native iPhone/iPad app (SwiftUI + `WKWebView`) that bundles
+this same web game, so it runs fully offline and always matches the website.
+A build phase copies the repo root's `.html`, `.css` and `.js` files into the
+app on every build — there's nothing to sync by hand.
+
+To run it you need a Mac with Xcode 15 or newer:
+
+1. Open `ios/MapGame.xcodeproj`.
+2. Select the **MapGame** target → **Signing & Capabilities** → pick your
+   Team (a free Apple ID works for running on your own phone). Change the
+   bundle identifier (`com.mjgibson.mapgame`) if Xcode says it's taken.
+3. Choose a simulator or your connected iPhone and press ▶︎.
+
+The app asks for microphone and speech-recognition permission the first time
+you tap 🎤. It reopens in whichever mode you last played. Like other games,
+its sound effects follow the silent switch.
 
 ## Deployment
 
@@ -73,10 +110,15 @@ North Macedonia and North Korea under **N**, Eswatini under **E**.
 
 | File | What it is |
 |---|---|
-| `index.html` | Page structure and styles |
-| `app.js` | Game logic: letters, autocomplete, voice, map, scoring, save/restore |
+| `index.html` | Alphabet Mode page |
+| `streak.html` | Streak Mode page |
+| `styles.css` | Styles shared by both modes |
+| `shared.js` | Shared by both modes: answer matching, autocomplete, sound, map drawing, voice, menu |
+| `app.js` | Alphabet Mode logic: letters, scoring, save/restore |
+| `streak.js` | Streak Mode logic: clock, random countries, pin placement and zoom |
 | `countries.js` | The 197 countries with ISO codes and accepted aliases |
 | `map-data.js` | Generated world-map SVG paths (Natural Earth 110m data, Natural Earth projection) |
+| `ios/` | Xcode project for the iOS app |
 
 Map geometry is derived from [Natural Earth](https://www.naturalearthdata.com/)
 (public domain), simplified to 110m resolution and pre-projected to SVG paths.

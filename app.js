@@ -4,29 +4,10 @@
 
   const STORAGE_KEY = "mapgame-alphabet-v2";
 
-  // ---------- Normalization & lookup ----------
-
-  function normalize(s) {
-    return s
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "") // strip accents
-      .replace(/&/g, " and ")
-      .replace(/[^a-z0-9]+/g, " ")     // punctuation -> space
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace(/^the /, "");
-  }
+  const { normalize, lookup, sound } = MapGame;
 
   // country -> letter it belongs to
   const letterOf = (c) => c.name[0].toUpperCase();
-
-  // Every accepted normalized form -> country
-  const lookup = new Map();
-  for (const c of COUNTRIES) {
-    c.norms = [normalize(c.name), ...(c.aliases || []).map(normalize)];
-    for (const n of c.norms) if (!lookup.has(n)) lookup.set(n, c);
-  }
 
   // Letters that actually have countries, in order
   const byLetter = new Map();
@@ -69,62 +50,6 @@
     try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
   }
 
-  // ---------- Sound effects ----------
-
-  const MUTE_KEY = "mapgame-muted";
-  let muted = false;
-  try { muted = localStorage.getItem(MUTE_KEY) === "1"; } catch (e) {}
-  let audioCtx = null;
-
-  function note(freq, type, t, dur, peak) {
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = type;
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(peak, t + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(audioCtx.destination);
-    o.start(t);
-    o.stop(t + dur + 0.05);
-  }
-
-  function ensureAudio() {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      if (!audioCtx) audioCtx = new Ctx();
-      if (audioCtx.state === "suspended") audioCtx.resume();
-    } catch (e) { /* audio unavailable */ }
-  }
-
-  // Browsers (iOS Safari especially) only start audio from inside a real user
-  // gesture. Voice-driven guesses arrive in recognition callbacks — not
-  // gestures — so unlock the context on every tap/keypress; this also
-  // re-resumes it after iOS suspends audio when the page is backgrounded.
-  ["pointerdown", "keydown"].forEach((ev) =>
-    document.addEventListener(ev, ensureAudio, { capture: true, passive: true }));
-
-  // kind: "correct" (rising ding) | "wrong" (low descending buzz, real country
-  // at the wrong time) | "nomatch" (soft tick, input didn't match any country)
-  function sound(kind) {
-    if (muted) return;
-    try {
-      ensureAudio();
-      if (!audioCtx) return;
-      const t = audioCtx.currentTime;
-      if (kind === "correct") {
-        note(659.25, "sine", t, 0.15, 0.14);        // E5
-        note(987.77, "sine", t + 0.09, 0.22, 0.14); // B5
-      } else if (kind === "wrong") {
-        note(196, "square", t, 0.12, 0.05);         // G3
-        note(147, "square", t + 0.1, 0.2, 0.05);    // D3
-      } else {
-        note(293.66, "triangle", t, 0.12, 0.07);    // D4 — quiet, non-judgmental
-      }
-    } catch (e) { /* audio unavailable — play silently */ }
-  }
-
   const currentLetter = () => LETTERS[state.li];
   const currentCountries = () => byLetter.get(currentLetter()) || [];
   const remainingCountries = () => currentCountries().filter((c) => !state.found.has(c.code));
@@ -158,35 +83,11 @@
     breakdown: $("breakdown"), missedlist: $("missedlist"), playagain: $("playagain"),
     map: $("map"), lettersProgress: $("lettersProgress"),
     back: $("backBtn"), next: $("nextBtn"),
-    menuBtn: $("menuBtn"), menuDropdown: $("menuDropdown"),
-    soundToggle: $("soundToggle"), resetBtn: $("resetBtn"),
   };
 
   // ---------- Map ----------
 
-  const mapNodes = new Map(); // code -> svg node
-  function buildMap() {
-    const svg = el.map;
-    svg.setAttribute("viewBox", MAP_DATA.viewBox);
-    const frag = document.createDocumentFragment();
-    for (const [code, shape] of Object.entries(MAP_DATA.shapes)) {
-      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      p.setAttribute("d", shape.d);
-      p.setAttribute("class", "land");
-      p.setAttribute("data-code", code);
-      frag.appendChild(p);
-      mapNodes.set(code, p);
-    }
-    for (const [code, [x, y]] of Object.entries(MAP_DATA.dots)) {
-      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", 3.2);
-      c.setAttribute("class", "dot");
-      c.setAttribute("data-code", code);
-      frag.appendChild(c);
-      mapNodes.set(code, c);
-    }
-    svg.appendChild(frag);
-  }
+  const mapNodes = MapGame.buildMap(el.map); // code -> svg node
 
   function paintMap() {
     for (const [code, node] of mapNodes) {
@@ -279,20 +180,9 @@
   let sugItems = [];
   let sugActive = -1;
 
-  // Show a single suggestion, and only after 3 typed letters — showing more
-  // would hand out answers (e.g. "chi" revealing both China and Chile).
   function matchSuggestions(q) {
-    const nq = normalize(q);
-    if (nq.length < 3) return [];
-    for (const c of remainingCountries()) {
-      for (const form of [c.name, ...(c.aliases || [])]) {
-        const nf = normalize(form);
-        if (nf.startsWith(nq) || nf.split(" ").some((w) => w.startsWith(nq))) {
-          return [{ c, via: form === c.name ? null : form }];
-        }
-      }
-    }
-    return [];
+    const s = MapGame.suggest(q, remainingCountries());
+    return s ? [s] : [];
   }
 
   function renderSuggestions() {
@@ -392,7 +282,7 @@
     renderLetter();
     // While the mic is on, voice is the input method — don't steal focus
     // (focusing would pop the keyboard on mobile).
-    if (!listening && !isResolved(currentLetter())) el.guess.focus();
+    if (!voice.isListening() && !isResolved(currentLetter())) el.guess.focus();
   }
 
   function advance() {
@@ -440,86 +330,19 @@
 
   // ---------- Voice input ----------
 
-  let recognition = null;
-  let listening = false;
-
-  // All (normalized form, country) pairs, longest form first, so that e.g.
-  // "South Sudan" consumes its span before "Sudan" can match inside it.
-  const voiceForms = COUNTRIES
-    .flatMap((c) => c.norms.map((n) => ({ n, c })))
-    .sort((a, b) => b.n.length - a.n.length);
-
-  function findCountriesInTranscript(transcript) {
-    let nt = ` ${normalize(transcript)} `;
-    const hits = [];
-    const seen = new Set();
-    for (const { n, c } of voiceForms) {
-      const needle = ` ${n} `;
-      if (nt.includes(needle)) {
-        nt = nt.split(needle).join(" ¤ "); // consume the span
-        if (!seen.has(c.code)) { hits.push(c); seen.add(c.code); }
+  const voice = MapGame.setupVoice(el.mic, {
+    onFinal(transcript, hits) {
+      if (hits.length) {
+        for (const c of hits) acceptCountry(c, true);
+      } else {
+        sound("nomatch");
+        setFeedback(`Heard “${transcript.trim()}” — no country match.`, "info");
       }
-    }
-    return hits;
-  }
-
-  function setupVoice() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { el.mic.hidden = true; return; }
-
-    recognition = new SR();
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    recognition.onresult = (ev) => {
-      let interim = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const res = ev.results[i];
-        if (res.isFinal) {
-          const transcript = res[0].transcript;
-          const hits = findCountriesInTranscript(transcript);
-          if (hits.length) {
-            for (const c of hits) acceptCountry(c, true);
-          } else {
-            sound("nomatch");
-            setFeedback(`Heard “${transcript.trim()}” — no country match.`, "info");
-          }
-        } else {
-          interim += res[0].transcript;
-        }
-      }
-      if (interim) setFeedback(`Listening… “${interim.trim()}”`, "info");
-    };
-    recognition.onerror = (ev) => {
-      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
-        listening = false;
-        el.mic.classList.remove("listening");
-        el.mic.disabled = true;
-        setFeedback("Microphone access was blocked — you can still type!", "err");
-      }
-    };
-    recognition.onend = () => {
-      if (listening) { try { recognition.start(); } catch (e) {} } // auto-restart after silence
-      else el.mic.classList.remove("listening");
-    };
-
-    el.mic.addEventListener("click", () => {
-      if (listening) { stopVoice(); setFeedback("Voice input off.", "info"); }
-      else {
-        listening = true;
-        el.mic.classList.add("listening");
-        setFeedback("Listening — say a country name…", "info");
-        try { recognition.start(); } catch (e) {}
-      }
-    });
-  }
-
-  function stopVoice() {
-    listening = false;
-    el.mic.classList.remove("listening");
-    if (recognition) { try { recognition.stop(); } catch (e) {} }
-  }
+    },
+    onInterim: (text) => setFeedback(`Listening… “${text}”`, "info"),
+    onStatus: setFeedback,
+  });
+  const stopVoice = voice.stop;
 
   // ---------- Events ----------
 
@@ -587,42 +410,6 @@
     }
   });
 
-  function renderMute() {
-    el.soundToggle.textContent = muted ? "🔇 Sound: Off" : "🔊 Sound: On";
-    el.soundToggle.setAttribute("aria-checked", String(!muted));
-  }
-
-  // ---------- Menu ----------
-
-  function openMenu() {
-    el.menuDropdown.hidden = false;
-    el.menuBtn.setAttribute("aria-expanded", "true");
-  }
-  function closeMenu() {
-    el.menuDropdown.hidden = true;
-    el.menuBtn.setAttribute("aria-expanded", "false");
-  }
-
-  el.menuBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (el.menuDropdown.hidden) openMenu(); else closeMenu();
-  });
-  // Clicking anywhere outside (or pressing Escape) dismisses the menu.
-  document.addEventListener("click", (e) => {
-    if (!el.menuDropdown.hidden && !$("menu").contains(e.target)) closeMenu();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !el.menuDropdown.hidden) closeMenu();
-  });
-
-  el.soundToggle.addEventListener("click", () => {
-    muted = !muted;
-    try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (e) {}
-    renderMute();
-    // audible confirmation on unmute — also proves sound works on this device
-    if (!muted) sound("correct");
-  });
-
   function resetGame() {
     reset();
     stopVoice();
@@ -634,23 +421,17 @@
     el.guess.value = "";
     closeSuggestions();
     renderLetter();
-    if (!listening) el.guess.focus();
+    if (!voice.isListening()) el.guess.focus();
   }
 
-  el.resetBtn.addEventListener("click", () => {
-    closeMenu();
-    resetGame();
-  });
+  MapGame.setupMenu({ onReset: resetGame });
 
   el.playagain.addEventListener("click", resetGame);
 
   // ---------- Init ----------
 
-  buildMap();
   load();
   paintMap();
-  setupVoice();
-  renderMute();
   if (LETTERS.every(isResolved)) showEnd();
   else {
     renderLetter();
