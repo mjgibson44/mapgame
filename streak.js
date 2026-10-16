@@ -49,6 +49,28 @@
   const [, , WORLD_W, WORLD_H] = MAP_DATA.viewBox.split(" ").map(Number);
   const SVG_NS = "http://www.w3.org/2000/svg";
 
+  // The Pacific straddles the map's left and right edges, so draw the land
+  // near each edge again just past the other one: a view centred on Samoa
+  // then shows Fiji and Australia to its west, as on a globe. Reveal colours
+  // go on every copy of a country.
+  const copies = new Map(); // code -> [node and its copies]
+  const firstDot = el.map.querySelector(".dot"); // copies go beneath the dots
+  for (const [code, node] of mapNodes) {
+    const list = [node];
+    if (node.tagName === "path") {
+      const { minX, maxX } = bboxOf(ringsOf(MAP_DATA.shapes[code].d).flat());
+      for (const dx of [WORLD_W, -WORLD_W]) {
+        if ((dx > 0 && minX < 400) || (dx < 0 && maxX > WORLD_W - 400)) {
+          const copy = node.cloneNode();
+          copy.setAttribute("transform", `translate(${dx} 0)`);
+          el.map.insertBefore(copy, firstDot);
+          list.push(copy);
+        }
+      }
+    }
+    copies.set(code, list);
+  }
+
   // Map paths are "M x y" followed by relative "l dx dy" segments, closed by
   // "Z" — one ring per island/landmass.
   function ringsOf(d) {
@@ -98,21 +120,29 @@
     return Math.sqrt(best);
   }
 
-  // Where to drop the pin: the point deepest inside the country's largest
-  // landmass (a centroid can land in the sea for crescent-shaped countries),
-  // found by a coarse-to-fine grid search. Also returns that landmass's
-  // bounding box, which sets how far to zoom in.
+  function bboxOf(points) {
+    const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+    return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+  }
+
+  // Where to drop the pin: the visual centre of the country — the point
+  // deepest inside its largest landmass (a plain centroid can land in the sea
+  // for crescent-shaped countries), found by a coarse-to-fine grid search.
+  // Also returns the bounding box of the country's major landmasses (so
+  // Indonesia spans Sumatra to Papua, but France leaves out French Guiana),
+  // which sets how far to zoom in.
   const pinCache = new Map();
   function pinFor(code) {
     if (pinCache.has(code)) return pinCache.get(code);
     let pin;
     const dot = MAP_DATA.dots[code];
     if (dot) {
-      pin = { x: dot[0], y: dot[1], w: 0, h: 0 };
+      pin = { x: dot[0], y: dot[1], box: { minX: dot[0], maxX: dot[0], minY: dot[1], maxY: dot[1] } };
     } else {
-      const ring = ringsOf(MAP_DATA.shapes[code].d).reduce((a, b) => (ringArea(b) > ringArea(a) ? b : a));
-      const xs = ring.map((p) => p[0]), ys = ring.map((p) => p[1]);
-      const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+      const rings = ringsOf(MAP_DATA.shapes[code].d);
+      const ring = rings.reduce((a, b) => (ringArea(b) > ringArea(a) ? b : a));
+      const major = rings.filter((r) => ringArea(r) >= 0.35 * ringArea(ring));
+      const { minX, maxX, minY, maxY } = bboxOf(ring);
       let cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
       let spanX = maxX - minX, spanY = maxY - minY, bestD = -1;
       const N = 16;
@@ -129,7 +159,7 @@
         }
         cx = bx; cy = by; spanX /= 4; spanY /= 4;
       }
-      pin = { x: cx, y: cy, w: maxX - minX, h: maxY - minY };
+      pin = { x: cx, y: cy, box: bboxOf(major.flat()) };
     }
     pinCache.set(code, pin);
     return pin;
@@ -164,17 +194,74 @@
     pinG.style.display = "";
   }
 
-  // Zoom so the country's main landmass fills about a third of the map —
-  // close enough to place small countries, wide enough to show neighbours.
-  function viewFor(pin) {
-    const size = Math.max(pin.w, pin.h * (WORLD_W / WORLD_H));
-    const w = Math.min(WORLD_W, Math.max(170, size * 3));
-    const h = w * (WORLD_H / WORLD_W);
+  // What makes a view recognisable is coastline: Rwanda up close is a
+  // featureless blob of land, Samoa up close is empty sea. So sample view v
+  // on a grid (x wraps like the map) and report the land fraction and how
+  // many neighbouring samples flip between land and sea — a coastline count.
+  let landRings = null;
+  function scenery(v) {
+    if (!landRings) {
+      landRings = Object.values(MAP_DATA.shapes)
+        .flatMap((s) => ringsOf(s.d))
+        .map((r) => ({ r, ...bboxOf(r) }));
+    }
+    const NX = 48, NY = 24;
+    const grid = [];
+    let land = 0, coast = 0;
+    for (let j = 0; j < NY; j++) {
+      const y = v.y + ((j + 0.5) * v.h) / NY;
+      grid.push([]);
+      for (let i = 0; i < NX; i++) {
+        const x = (((v.x + ((i + 0.5) * v.w) / NX) % WORLD_W) + WORLD_W) % WORLD_W;
+        const isLand = landRings.some((L) =>
+          x >= L.minX && x <= L.maxX && y >= L.minY && y <= L.maxY && inside(x, y, L.r));
+        grid[j].push(isLand);
+        if (isLand) land++;
+        if (i > 0 && grid[j][i - 1] !== isLand) coast++;
+        if (j > 0 && grid[j - 1][i] !== isLand) coast++;
+      }
+    }
+    return { land: land / (NX * NY), coast };
+  }
+
+  // The view (in map units) for a country. It starts with the whole country
+  // filling ~40% of the width — close enough to see exactly where the pin is
+  // — then zooms out step by step while it's a blob of land with too little
+  // coastline to tell which continent you're on, or nearly all open ocean
+  // (islands like New Zealand naturally have little coastline, so a sea
+  // view with some land in it is fine). The width
+  // stays between MIN_W (about Western Europe) and MAX_W (about two
+  // continents side by side).
+  const MIN_W = 230, MAX_W = 560;
+  const MIN_COAST = 120, BLOB_LAND = 0.2, MIN_LAND = 0.06;
+  const viewCache = new Map();
+  function viewFor(code) {
+    if (viewCache.has(code)) return viewCache.get(code);
+    const pin = pinFor(code), b = pin.box;
+    const aspect = WORLD_H / WORLD_W;
+    const size = Math.max(b.maxX - b.minX, (b.maxY - b.minY) / aspect);
+    const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-    // stay on the map, but never cut off a pin near the edge (Tuvalu sits at x≈1002)
-    const x = clamp(pin.x - w / 2, Math.min(0, pin.x - w * 0.1), Math.max(WORLD_W, pin.x + w * 0.1) - w);
-    const y = clamp(pin.y - h / 2, Math.min(0, pin.y - h * 0.1), Math.max(WORLD_H, pin.y + h * 0.1) - h);
-    return { x, y, w, h };
+
+    function frame(w) {
+      const h = w * aspect;
+      // centre on the country, keeping the pin clear of the sides and with
+      // headroom above it for the pin graphic
+      let x = clamp(cx - w / 2, pin.x - 0.82 * w, pin.x - 0.18 * w);
+      let y = clamp(cy - h / 2, pin.y - 0.88 * h, pin.y - 0.3 * h);
+      // don't show empty space past the top/bottom of the map unless the pin needs it
+      y = clamp(y, Math.min(0, pin.y - 0.3 * h), Math.max(WORLD_H - h, pin.y - 0.88 * h));
+      return { x, y, w, h };
+    }
+
+    let w = clamp(size * 2.5, MIN_W, MAX_W);
+    let v = frame(w);
+    for (let s = scenery(v); ((s.coast < MIN_COAST && s.land > BLOB_LAND) || s.land < MIN_LAND) && w < MAX_W; s = scenery(v)) {
+      w = Math.min(MAX_W, w * 1.15);
+      v = frame(w);
+    }
+    viewCache.set(code, v);
+    return v;
   }
 
   const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -200,20 +287,20 @@
   // Reveal colours on the map: "good" (got it), "bad" (skipped / timed out),
   // "wrong" (a wrong guess, flashed briefly so you learn where it is).
   const REVEALS = ["reveal-good", "reveal-bad", "reveal-wrong"];
+  const nodesOf = (code) => copies.get(code) || [];
   function clearReveals() {
-    for (const node of mapNodes.values()) node.classList.remove("target", ...REVEALS);
+    for (const list of copies.values()) for (const node of list) node.classList.remove("target", ...REVEALS);
   }
   function reveal(code, kind) {
-    const node = mapNodes.get(code);
-    if (node) node.classList.add(`reveal-${kind}`);
+    for (const node of nodesOf(code)) node.classList.add(`reveal-${kind}`);
   }
   const wrongTimers = new Map();
   function flashWrong(code) {
-    const node = mapNodes.get(code);
-    if (!node) return;
     clearTimeout(wrongTimers.get(code));
-    node.classList.add("reveal-wrong");
-    wrongTimers.set(code, setTimeout(() => node.classList.remove("reveal-wrong"), 1100));
+    for (const node of nodesOf(code)) node.classList.add("reveal-wrong");
+    wrongTimers.set(code, setTimeout(() => {
+      for (const node of nodesOf(code)) node.classList.remove("reveal-wrong");
+    }, 1100));
   }
 
   // ---------- Clock ----------
@@ -297,10 +384,9 @@
     clearReveals();
     if (!run.deck.length) run.deck = shuffled(COUNTRIES); // went through all 197!
     run.target = run.deck.pop();
-    const node = mapNodes.get(run.target.code);
-    if (node) node.classList.add("target");
+    for (const node of nodesOf(run.target.code)) node.classList.add("target");
     pinAt = pinFor(run.target.code);
-    zoomTo(viewFor(pinAt));
+    zoomTo(viewFor(run.target.code));
     busy = false;
     el.guess.disabled = false;
     el.skip.disabled = false;

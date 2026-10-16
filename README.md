@@ -44,8 +44,13 @@ only), and you type the country it's sitting on.
   where it is), and **Skip** also costs −5s and shows you the answer.
 - Your score is how many you name before the clock hits zero; your best is
   saved on the device.
-- The map zooms to each country's neighbourhood so small countries are
-  placeable; microstates too small to draw show as a dot under the pin.
+- The pin sits at the visual centre of the country, and the map zooms so
+  the whole country fills a good part of the view: close enough to see
+  exactly where the pin is, but zoomed out further whenever the view would be
+  a featureless blob of land or open ocean, so there's always enough
+  coastline to tell which continent you're on. The map wraps around the
+  Pacific like a globe. Microstates too small to draw show as a dot under
+  the pin.
 - Input that isn't a country at all (a typo) costs nothing. Autocomplete and
   voice input work as in Alphabet Mode.
 - The clock pauses while the tab or app is in the background.
