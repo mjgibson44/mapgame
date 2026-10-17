@@ -325,9 +325,22 @@ window.MapGame = (function () {
     const downKeys = new Map(); // pointerId -> key button
     let repeatTimer = null;
     function stopRepeat() { clearTimeout(repeatTimer); clearInterval(repeatTimer); repeatTimer = null; }
+    // Like Apple's, the keyboard has no dead zones: a touch in the gap
+    // between keys (easy to hit when typing fast) goes to the nearest key.
+    const keys = [...kb.querySelectorAll(".kb-key")];
+    function keyAt(x, y) {
+      let nearest = null, best = Infinity;
+      for (const b of keys) {
+        const r = b.getBoundingClientRect();
+        const dx = Math.max(r.left - x, 0, x - r.right);
+        const dy = Math.max(r.top - y, 0, y - r.bottom);
+        if (dx * dx + dy * dy < best) { best = dx * dx + dy * dy; nearest = b; }
+      }
+      return nearest;
+    }
     kb.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      const b = e.target.closest(".kb-key");
+      const b = keyAt(e.clientX, e.clientY);
       if (!b) return;
       b.classList.add("down");
       downKeys.set(e.pointerId, b);
