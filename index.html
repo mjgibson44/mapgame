@@ -2,314 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MapGame — Alphabet Mode</title>
-<style>
-  :root {
-    --ink: #111;
-    --ink-soft: #444;
-    --ink-faint: #888;
-    --on-ink: #fff;          /* text placed on top of --ink surfaces */
-    --paper: #fafaf8;
-    --card: #ffffff;
-    --line: #e2e2de;
-    --good: #1a7f37;
-    --bad: #b42318;
-    --flash: #f2c94c;
-    --map-bg: #efefec;
-    --map-land: #ffffff;
-    --map-stroke: #555;
-    --map-guessed: #1c1c1c;
-    --display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --ink: #ecebe3;
-      --ink-soft: #c2c1b8;
-      --ink-faint: #8b8a81;
-      --on-ink: #131311;
-      --paper: #131311;
-      --card: #1c1c1a;
-      --line: #32322e;
-      --good: #5cbd7d;
-      --bad: #e5695c;
-      --map-bg: #151513;
-      --map-land: #1c1c1a;
-      --map-stroke: #9b9a90;
-      --map-guessed: #ecebe3;
-    }
-  }
-  :root[data-theme="dark"] {
-    --ink: #ecebe3; --ink-soft: #c2c1b8; --ink-faint: #8b8a81; --on-ink: #131311;
-    --paper: #131311; --card: #1c1c1a; --line: #32322e;
-    --good: #5cbd7d; --bad: #e5695c;
-    --map-bg: #151513; --map-land: #1c1c1a; --map-stroke: #9b9a90; --map-guessed: #ecebe3;
-  }
-  :root[data-theme="light"] {
-    --ink: #111; --ink-soft: #444; --ink-faint: #888; --on-ink: #fff;
-    --paper: #fafaf8; --card: #ffffff; --line: #e2e2de;
-    --good: #1a7f37; --bad: #b42318;
-    --map-bg: #efefec; --map-land: #ffffff; --map-stroke: #555; --map-guessed: #1c1c1c;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--paper);
-    color: var(--ink);
-    min-height: 100vh;
-  }
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px 20px 40px; }
-
-  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 6px 0 14px; }
-  .letters-progress { font-family: var(--display); font-size: 24px; letter-spacing: 0.2px; font-variant-numeric: tabular-nums; }
-  .letters-progress small {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: 12px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 1.5px; margin-left: 8px;
-  }
-  header .total { margin-left: auto; font-size: 14px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
-  .menu { position: relative; flex-shrink: 0; }
-  #menuBtn {
-    width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 9px;
-    background: var(--card); font-size: 18px; line-height: 1; color: var(--ink);
-    display: grid; place-items: center;
-  }
-  #menuBtn:hover { border-color: var(--ink-soft); }
-  .menu-dropdown {
-    position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 190px;
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; padding: 4px;
-  }
-  .menu-dropdown button {
-    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-    padding: 10px 12px; border: none; border-radius: 7px; background: none;
-    font-family: inherit; font-size: 14px; color: var(--ink);
-  }
-  .menu-dropdown button:hover { background: var(--ink); color: var(--on-ink); }
-
-  /* Alphabet strip — clickable letter states:
-     (default) untouched · .partial some found · .done all found · .given gave up
-     .current marks the letter being played and combines with the others */
-  .letters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; }
-  .letters button {
-    width: 30px; height: 30px; display: grid; place-items: center;
-    border: 1px solid var(--line); border-radius: 6px;
-    font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink-faint);
-    background: var(--card); user-select: none; cursor: pointer; padding: 0;
-    transition: transform 0.12s, border-color 0.12s;
-  }
-  .letters button:hover { border-color: var(--ink-soft); color: var(--ink); }
-  .letters button.done { background: var(--good); border-color: var(--good); color: var(--on-ink); }
-  .letters button.partial { background: var(--line); border-color: var(--line); color: var(--ink); }
-  .letters button.given { background: var(--bad); border-color: var(--bad); color: var(--on-ink); text-decoration: line-through; }
-  .letters button.current { border: 2px solid var(--ink); border-style: solid; color: var(--ink); transform: scale(1.12); }
-  .letters button.done.current { outline: 2px solid var(--good); outline-offset: 1px; color: var(--on-ink); }
-  .letters button.given.current { outline: 2px solid var(--bad); outline-offset: 1px; color: var(--on-ink); }
-
-  .layout { display: grid; grid-template-columns: 390px 1fr; gap: 20px; align-items: start; }
-  @media (max-width: 950px) { .layout { grid-template-columns: 1fr; } }
-
-  .panel {
-    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-    padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  }
-
-  .letter-row { display: flex; align-items: center; gap: 16px; }
-  .big-letter {
-    font-family: var(--display);
-    font-size: 60px; font-weight: 700; line-height: 1; width: 84px; height: 84px;
-    display: grid; place-items: center; border: 2px solid var(--ink); border-radius: 14px;
-    flex-shrink: 0;
-  }
-  .counts { font-size: 15px; color: var(--ink-soft); line-height: 1.5; }
-  .counts b { color: var(--ink); font-size: 17px; }
-  .counts .nums { display: flex; gap: 14px; margin-top: 6px; font-variant-numeric: tabular-nums; }
-  .counts .nums span b { display: block; font-size: 22px; }
-
-  .inputrow { display: flex; gap: 8px; margin-top: 18px; position: relative; }
-  #guess {
-    flex: 1; font-size: 17px; padding: 11px 14px; border: 1.5px solid var(--ink-soft);
-    border-radius: 10px; outline: none; background: var(--card); color: var(--ink); min-width: 0;
-  }
-  #guess:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(0,0,0,0.07); }
-  #guess.shake { animation: shake 0.3s; }
-  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
-
-  button { font-family: inherit; cursor: pointer; }
-  #micBtn {
-    width: 46px; border: 1.5px solid var(--ink-soft); border-radius: 10px; background: var(--card);
-    font-size: 20px; flex-shrink: 0;
-  }
-  #micBtn.listening { background: var(--ink); border-color: var(--ink); animation: pulse 1.2s infinite; }
-  @keyframes pulse { 0%,100%{box-shadow: 0 0 0 0 rgba(0,0,0,0.25)} 50%{box-shadow: 0 0 0 6px rgba(0,0,0,0.08)} }
-  #micBtn[hidden] { display: none; }
-
-  /* Autocomplete dropdown */
-  #suggestions {
-    position: absolute; top: calc(100% + 4px); left: 0; right: 54px; z-index: 20;
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; display: none;
-  }
-  #suggestions.open { display: block; }
-  #suggestions div { padding: 10px 14px; font-size: 15px; cursor: pointer; }
-  #suggestions div.active, #suggestions div:hover { background: var(--ink); color: var(--on-ink); }
-  #suggestions div small { color: inherit; opacity: 0.6; margin-left: 6px; }
-
-  #feedback { min-height: 24px; margin-top: 10px; font-size: 14px; }
-  #feedback.ok { color: var(--good); }
-  #feedback.err { color: var(--bad); }
-  #feedback.info { color: var(--ink-faint); }
-
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-  .chips span {
-    font-size: 13px; padding: 4px 10px; border-radius: 999px;
-    background: var(--ink); color: var(--on-ink);
-  }
-  .chips span.missed { background: var(--card); color: var(--bad); border: 1px solid var(--bad); text-decoration: line-through; }
-
-  .actions { margin-top: 16px; display: flex; gap: 8px; }
-  .actions button {
-    font-size: 14px; padding: 9px 14px; border-radius: 10px;
-    border: 1.5px solid var(--ink-soft); background: var(--card); color: var(--ink);
-  }
-  .actions #skipBtn { flex: 1; }
-  .actions button.nav { width: 44px; padding: 9px 0; font-size: 16px; flex-shrink: 0; }
-  .actions button:hover:not(:disabled) { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
-  .actions button:disabled { opacity: 0.45; cursor: default; }
-
-  /* Map */
-  .mapbox { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-  #map { width: 100%; height: auto; display: block; background: var(--map-bg); border-radius: 8px; }
-  #map .land { fill: var(--map-land); stroke: var(--map-stroke); stroke-width: 0.6; stroke-linejoin: round; transition: fill 0.5s; }
-  #map .land.guessed { fill: var(--map-guessed); }
-  #map .land.flash { fill: var(--flash); transition: none; }
-  #map .dot { fill: var(--map-land); stroke: var(--map-stroke); stroke-width: 0.8; transition: fill 0.5s; }
-  #map .dot.guessed { fill: var(--map-guessed); }
-  #map .dot.flash { fill: var(--flash); transition: none; }
-
-  /* End screen */
-  #endscreen { text-align: center; }
-  #endscreen h2 { font-family: var(--display); font-size: 26px; margin: 4px 0 2px; }
-  #endscreen .score { font-family: var(--display); font-size: 56px; font-weight: 700; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
-  #endscreen .pct { color: var(--ink-faint); margin-bottom: 16px; }
-  #breakdown { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin: 14px 0; }
-  #breakdown span {
-    width: 34px; padding: 4px 0 5px; border: 1px solid var(--line); border-radius: 6px;
-    font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums;
-  }
-  #breakdown span b { display: block; font-size: 14px; color: var(--ink); }
-  #breakdown span.full { background: var(--ink); border-color: var(--ink); }
-  #breakdown span.full b, #breakdown span.full { color: var(--on-ink); }
-  #missedlist { text-align: left; font-size: 13px; color: var(--ink-soft); max-height: 180px; overflow-y: auto; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 6px; }
-  #playagain { margin-top: 16px; font-size: 16px; padding: 12px 26px; border-radius: 10px; border: none; background: var(--ink); color: var(--on-ink); }
-  button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) {
-    * { animation: none !important; transition: none !important; }
-  }
-
-  .hint { margin-top: 14px; font-size: 12.5px; color: var(--ink-faint); line-height: 1.5; }
-  [hidden] { display: none !important; }
-
-  /* Phones */
-  @media (max-width: 600px) {
-    .wrap { padding: 10px 12px 28px; }
-    header { padding-bottom: 10px; }
-    header h1 { font-size: 19px; }
-    header .total { font-size: 13px; }
-    .letters { gap: 3px; margin-bottom: 12px; }
-    .letters button { width: 25px; height: 25px; font-size: 11px; border-radius: 5px; }
-    .letters-progress { font-size: 20px; }
-    .letters-progress small { margin-left: 5px; letter-spacing: 1px; }
-    .layout { gap: 14px; }
-    .panel { padding: 14px; border-radius: 12px; }
-    .letter-row { gap: 12px; }
-    .big-letter { width: 64px; height: 64px; font-size: 44px; border-radius: 11px; }
-    .counts { font-size: 13.5px; }
-    .counts b { font-size: 14.5px; }
-    .counts .nums span b { font-size: 19px; }
-    .inputrow { margin-top: 14px; }
-    #guess { font-size: 16px; padding: 12px 12px; } /* ≥16px avoids iOS zoom-on-focus */
-    #micBtn { width: 48px; }
-    #suggestions div { padding: 12px 14px; }
-    .actions button { padding: 12px 10px; }
-    .actions button.nav { width: 46px; }
-    .mapbox { padding: 6px; border-radius: 12px; }
-    #endscreen .score { font-size: 44px; }
-  }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MapGame</title>
+<link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="home">
 <div class="wrap">
-  <header>
-    <span class="letters-progress" id="lettersProgress"></span>
-    <span class="total" id="totalProgress"></span>
-    <div class="menu" id="menu">
-      <button id="menuBtn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
-      <div class="menu-dropdown" id="menuDropdown" role="menu" hidden>
-        <button id="soundToggle" role="menuitemcheckbox" aria-checked="true">🔊 Sound: On</button>
-        <button id="resetBtn" role="menuitem">↺ Reset game</button>
-      </div>
-    </div>
+  <header class="home-head">
+    <h1>MapGame</h1>
+    <p>How well do you know the world's 197 countries?</p>
   </header>
 
-  <div class="letters" id="letterStrip"></div>
-
-  <div class="layout">
-    <div>
-      <div class="panel" id="gamePanel">
-        <div class="letter-row">
-          <div class="big-letter" id="bigLetter">A</div>
-          <div class="counts">
-            <b id="letterHeadline"></b>
-            <div class="nums">
-              <span><b id="nTotal">0</b>total</span>
-              <span><b id="nFound">0</b>found</span>
-              <span><b id="nLeft">0</b>remaining</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="inputrow">
-          <input id="guess" type="text" autocomplete="off" autocapitalize="words"
-                 spellcheck="false" placeholder="Type a country…" aria-label="Country guess">
-          <button id="micBtn" title="Speak a country" aria-label="Voice input">🎤</button>
-          <div id="suggestions" role="listbox"></div>
-        </div>
-
-        <div id="feedback" class="info"></div>
-        <div class="chips" id="foundChips"></div>
-
-        <div class="actions">
-          <button id="backBtn" class="nav" title="Previous letter" aria-label="Previous letter">←</button>
-          <button id="skipBtn">Reveal answers</button>
-          <button id="nextBtn" class="nav" title="Next letter" aria-label="Next letter">→</button>
-        </div>
-        <div class="hint">
-          Type at least 3 letters for a suggestion, or tap the mic and say country names.
-          Click a letter above to jump around; letters with no countries are skipped.
-        </div>
-      </div>
-
-      <div class="panel" id="endscreen" hidden>
-        <h2>Finished! 🌍</h2>
-        <div class="score" id="finalScore"></div>
-        <div class="pct" id="finalPct"></div>
-        <div id="breakdown"></div>
-        <div id="missedlist"></div>
-        <button id="playagain">Play again</button>
-      </div>
-    </div>
-
-    <div class="mapbox">
-      <svg id="map" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="World map"></svg>
-    </div>
-  </div>
+  <nav class="modes" aria-label="Game modes">
+    <a class="mode-card" href="alphabet.html">
+      <span class="mode-icon" aria-hidden="true">🔤</span>
+      <span class="mode-text">
+        <b>Alphabet</b>
+        <span>Name every country, letter by letter, A to Z.</span>
+        <small id="alphabetStat"></small>
+      </span>
+      <span class="mode-go" aria-hidden="true">›</span>
+    </a>
+    <a class="mode-card" href="streak.html">
+      <span class="mode-icon" aria-hidden="true">⏱</span>
+      <span class="mode-text">
+        <b>Streak</b>
+        <span>Name the country under the pin, against the clock.</span>
+        <small id="streakStat"></small>
+      </span>
+      <span class="mode-go" aria-hidden="true">›</span>
+    </a>
+  </nav>
 </div>
 
-<!-- ?v= busts old browser caches from before _headers enforced revalidation;
-     bump it only if stale-JS reports ever come back -->
-<script src="map-data.js?v=2"></script>
 <script src="countries.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="home.js"></script>
 </body>
 </html>
