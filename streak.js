@@ -395,6 +395,7 @@
     el.start.hidden = which !== "start";
     el.panel.hidden = which !== "game";
     el.end.hidden = which !== "end";
+    el.mic.classList.toggle("idle", which !== "game"); // voice only counts during a run
     requestAnimationFrame(fitMap); // after the keyboard shows or hides
   }
 

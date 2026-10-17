@@ -14,6 +14,7 @@
       <span id="clock">1:00</span>
       <span class="delta" id="delta" aria-hidden="true"></span>
     </span>
+    <button id="micBtn" title="Speak a country" aria-label="Voice input">🎤</button>
     <div class="menu" id="menu">
       <button id="menuBtn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
       <div class="menu-dropdown" id="menuDropdown" role="menu" hidden>
@@ -46,12 +47,11 @@
         <button class="primary" id="startBtn">Start</button>
       </div>
 
-      <div class="panel" id="gamePanel" hidden>
+      <div id="gamePanel" hidden>
         <div class="inputrow">
           <input id="guess" type="text" autocomplete="off" autocapitalize="words"
                  spellcheck="false" placeholder="Type a country…" aria-label="Country guess">
           <button id="skipBtn" title="Skip this country (−5s)">Skip</button>
-          <button id="micBtn" title="Speak a country" aria-label="Voice input">🎤</button>
           <div id="suggestions" role="listbox"></div>
         </div>
 

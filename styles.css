@@ -253,6 +253,14 @@ button.primary {
   background: var(--ink); color: var(--on-ink); font-weight: 600;
 }
 .streak-mode .inputrow { margin-top: 0; }
+/* the mic sits in the header, left of the menu, styled like the menu button */
+.streak-mode header #micBtn {
+  width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 9px;
+  font-size: 17px; line-height: 1; display: grid; place-items: center; padding: 0;
+}
+.streak-mode header #micBtn.listening { border-color: var(--ink); }
+.streak-mode header #micBtn.idle { visibility: hidden; }
+.streak-mode #suggestions { right: 0; }
 .streak-mode #skipBtn {
   flex-shrink: 0; padding: 0 14px; border: 1.5px solid var(--ink-soft); border-radius: 10px;
   background: var(--card); color: var(--ink); font-size: 15px;
