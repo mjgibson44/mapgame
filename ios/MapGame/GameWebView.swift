@@ -4,15 +4,17 @@ import WebKit
 /// Runs the web game bundled into the app (the repo's .html/.css/.js files,
 /// copied to `web/` by the "Bundle web game" build phase), fully offline.
 struct GameWebView: UIViewRepresentable {
-    /// The page (mode) to reopen on next launch.
-    private static let lastPageKey = "lastPage"
-
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
+        // Tell the page it's in the app, so it swaps the system keyboard for
+        // the game's own (setupKeyboard in shared.js).
+        config.userContentController.addUserScript(WKUserScript(
+            source: "document.documentElement.classList.add('native-app');",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.uiDelegate = context.coordinator
@@ -32,24 +34,14 @@ struct GameWebView: UIViewRepresentable {
             assertionFailure("web/ missing from the app bundle — check the Bundle web game build phase")
             return webView
         }
-        var page = webDir.appendingPathComponent(
-            UserDefaults.standard.string(forKey: Self.lastPageKey) ?? "index.html")
-        if !FileManager.default.fileExists(atPath: page.path) {
-            page = webDir.appendingPathComponent("index.html")
-        }
-        webView.loadFileURL(page, allowingReadAccessTo: webDir)
+        // Always open on the home page, where you pick a mode.
+        webView.loadFileURL(webDir.appendingPathComponent("index.html"), allowingReadAccessTo: webDir)
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            if let url = webView.url, url.isFileURL {
-                UserDefaults.standard.set(url.lastPathComponent, forKey: GameWebView.lastPageKey)
-            }
-        }
-
         // Links off the bundled game open in Safari, not inside the app.
         func webView(
             _ webView: WKWebView,

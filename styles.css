@@ -14,6 +14,9 @@
   --map-stroke: #555;
   --map-guessed: #1c1c1c;
   --map-solid: #cfcec7;    /* land on the borderless (streak) map */
+  --kb-bg: #e2e1dc;        /* in-app keyboard: tray, letter keys, ⌫/return */
+  --kb-key: #ffffff;
+  --kb-special: #c4c3bb;
   --display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
 }
 @media (prefers-color-scheme: dark) {
@@ -32,6 +35,9 @@
     --map-stroke: #9b9a90;
     --map-guessed: #ecebe3;
     --map-solid: #4a4943;
+    --kb-bg: #232321;
+    --kb-key: #57564f;
+    --kb-special: #383834;
   }
 }
 :root[data-theme="dark"] {
@@ -40,6 +46,7 @@
   --good: #5cbd7d; --bad: #e5695c;
   --map-bg: #151513; --map-land: #1c1c1a; --map-stroke: #9b9a90; --map-guessed: #ecebe3;
   --map-solid: #4a4943;
+  --kb-bg: #232321; --kb-key: #57564f; --kb-special: #383834;
 }
 :root[data-theme="light"] {
   --ink: #111; --ink-soft: #444; --ink-faint: #888; --on-ink: #fff;
@@ -47,6 +54,7 @@
   --good: #1a7f37; --bad: #b42318;
   --map-bg: #efefec; --map-land: #ffffff; --map-stroke: #555; --map-guessed: #1c1c1c;
   --map-solid: #cfcec7;
+  --kb-bg: #e2e1dc; --kb-key: #ffffff; --kb-special: #c4c3bb;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; }
@@ -244,9 +252,14 @@ button.primary {
   width: 100%; font-size: 17px; padding: 13px 26px; border-radius: 10px; border: none;
   background: var(--ink); color: var(--on-ink); font-weight: 600;
 }
-.prompt { font-family: var(--display); font-size: 21px; }
-.streak-mode .inputrow { margin-top: 12px; }
-.streak-mode .actions #skipBtn { flex: 1; }
+.streak-mode .inputrow { margin-top: 0; }
+.streak-mode #skipBtn {
+  flex-shrink: 0; padding: 0 14px; border: 1.5px solid var(--ink-soft); border-radius: 10px;
+  background: var(--card); color: var(--ink); font-size: 15px;
+}
+.streak-mode #skipBtn:disabled { opacity: 0.45; cursor: default; }
+/* one line, so the box under the map never changes height mid-run */
+.streak-mode #feedback { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .streak-mode #endscreen .chips { justify-content: center; max-height: 220px; overflow-y: auto; margin: 6px 0 4px; }
 
 /* Map without borders: every country is stroked in its own fill colour, so
@@ -278,6 +291,76 @@ button.primary {
 .hint { margin-top: 14px; font-size: 12.5px; color: var(--ink-faint); line-height: 1.5; }
 [hidden] { display: none !important; }
 
+/* ---------- Home ---------- */
+.home .wrap { max-width: 560px; padding-top: 48px; }
+.home-head h1 { font-family: var(--display); font-size: 44px; margin: 0; letter-spacing: 0.3px; }
+.home-head p { margin: 6px 0 0; color: var(--ink-soft); font-size: 16px; line-height: 1.5; }
+.modes { display: grid; gap: 12px; margin-top: 28px; }
+.mode-card {
+  display: flex; align-items: center; gap: 16px; padding: 18px 18px 18px 20px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04); color: var(--ink); text-decoration: none;
+  transition: border-color 0.12s, transform 0.12s;
+}
+.mode-card:hover { border-color: var(--ink-soft); }
+.mode-card:active { transform: scale(0.985); }
+.mode-icon { font-size: 30px; flex-shrink: 0; }
+.mode-text { flex: 1; display: grid; gap: 3px; line-height: 1.4; }
+.mode-text b { font-family: var(--display); font-size: 22px; }
+.mode-text span { color: var(--ink-soft); font-size: 14.5px; }
+.mode-text small { color: var(--ink-faint); font-size: 13px; font-variant-numeric: tabular-nums; }
+.mode-text small:empty { display: none; }
+.mode-go { font-size: 28px; color: var(--ink-faint); flex-shrink: 0; }
+
+/* ---------- In-app keyboard (iOS app only; see setupKeyboard) ----------
+   Sized like Apple's iPhone letter keys: 42px keys, 6px apart, 12px between
+   rows — but without the predictive bar or emoji/dictation row. */
+.kb {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  padding: 8px calc(3px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) calc(3px + env(safe-area-inset-left));
+  background: var(--kb-bg);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
+}
+.kb.off { opacity: 0.45; pointer-events: none; }
+.kb-row { display: flex; justify-content: center; gap: 6px; }
+.kb-row + .kb-row { margin-top: 12px; }
+.kb-key {
+  position: relative; flex: none; width: calc((100% - 54px) / 10); height: 42px; padding: 0;
+  border: none; border-radius: 7px; background: var(--kb-key); color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.3);
+  font: 400 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.kb-key.down { background: var(--kb-special); }
+.kb-key.special { background: var(--kb-special); font-size: 16px; }
+.kb-key.special.down { background: var(--kb-key); }
+.kb-side { flex: 1; margin: 0 8px; }
+.kb-row .kb-side:first-child { margin-left: 0; }
+.kb-key.kb-side { width: auto; margin-right: 0; font-size: 20px; }
+.kb-key.space { flex: 1; width: auto; font-size: 16px; }
+.kb-key.return { width: calc((100% - 54px) / 10 * 2.5 + 9px); }
+/* the letter pops up above your finger, as on Apple's keyboard */
+.kb-key.letter.down::after {
+  content: attr(data-k); position: absolute; left: -5px; right: -5px; bottom: calc(100% + 4px);
+  height: 52px; display: grid; place-items: center; border-radius: 9px;
+  background: var(--kb-key); box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  font-size: 32px; text-transform: uppercase; pointer-events: none;
+}
+/* keep the page's end clear of the keyboard */
+body.kb-open .wrap { padding-bottom: calc(var(--kb-h, 260px) + 16px); }
+html { scroll-padding-bottom: var(--kb-h, 0px); }
+@media (max-height: 500px) {  /* landscape phone */
+  .kb { padding-top: 5px; }
+  .kb-key { height: 32px; font-size: 19px; }
+  .kb-row + .kb-row { margin-top: 6px; }
+  .kb-key.letter.down::after { height: 40px; font-size: 26px; }
+}
+@media (min-width: 700px) and (min-height: 600px) {  /* iPad */
+  .kb { padding: 8px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left)); }
+  .kb-row { gap: 10px; }
+  .kb-key { width: calc((100% - 90px) / 10); height: 56px; font-size: 24px; }
+  .kb-key.return { width: calc((100% - 90px) / 10 * 2 + 10px); }
+}
+
 /* Phones */
 @media (max-width: 600px) {
   .wrap { padding: 10px 12px 28px; }
@@ -304,7 +387,6 @@ button.primary {
   .mapbox { padding: 6px; border-radius: 12px; }
   #endscreen .score { font-size: 44px; }
   .clock { font-size: 26px; }
-  .prompt { font-size: 18px; }
 }
 @media (max-width: 950px) {
   .streak-mode .mapbox { order: -1; }

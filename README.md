@@ -83,8 +83,11 @@ To run it you need a Mac with Xcode 15 or newer:
 3. Choose a simulator or your connected iPhone and press ▶︎.
 
 The app asks for microphone and speech-recognition permission the first time
-you tap 🎤. It reopens in whichever mode you last played. Like other games,
-its sound effects follow the silent switch.
+you tap 🎤. It opens on the home page, where you pick a mode. Instead of the
+system keyboard it shows the game's own: the same size as Apple's letter keys,
+but with no predictive-text bar, emoji/dictation row or Done bar, which saves
+space and gives no typing help. Like other games, its sound effects follow the
+silent switch.
 
 ## Deployment
 
@@ -115,10 +118,11 @@ North Macedonia and North Korea under **N**, Eswatini under **E**.
 
 | File | What it is |
 |---|---|
-| `index.html` | Alphabet Mode page |
+| `index.html` | Home page: pick a mode (`home.js` shows your progress in each) |
+| `alphabet.html` | Alphabet Mode page |
 | `streak.html` | Streak Mode page |
 | `styles.css` | Styles shared by both modes |
-| `shared.js` | Shared by both modes: answer matching, autocomplete, sound, map drawing, voice, menu |
+| `shared.js` | Shared by both modes: answer matching, autocomplete, sound, map drawing, voice, menu, the iOS app's keyboard |
 | `app.js` | Alphabet Mode logic: letters, scoring, save/restore |
 | `streak.js` | Streak Mode logic: clock, random countries, pin placement and zoom |
 | `countries.js` | The 197 countries with ISO codes and accepted aliases |

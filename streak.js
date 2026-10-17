@@ -175,6 +175,11 @@
   pinG.style.display = "none";
   el.map.appendChild(pinG);
 
+  // In the app the map grows to fill the screen down to the keyboard (see
+  // fitMap), so views are framed to the map's actual shape, not the world's.
+  const WORLD_ASPECT = WORLD_H / WORLD_W;
+  let mapAspect = WORLD_ASPECT;
+
   let view = { x: 0, y: 0, w: WORLD_W, h: WORLD_H };
   let viewAnim = null;
   let pinAt = null;
@@ -231,20 +236,24 @@
   // (islands like New Zealand naturally have little coastline, so a sea
   // view with some land in it is fine). The width
   // stays between MIN_W (about Western Europe) and MAX_W (about two
-  // continents side by side).
+  // continents side by side). Those widths are for a world-shaped (2:1) map;
+  // a taller map gets a narrower view covering the same area, so it zooms
+  // in a little as well as showing more to the north and south.
   const MIN_W = 230, MAX_W = 560;
   const MIN_COAST = 120, BLOB_LAND = 0.2, MIN_LAND = 0.06;
   const viewCache = new Map();
   function viewFor(code) {
-    if (viewCache.has(code)) return viewCache.get(code);
+    const key = `${code}@${mapAspect.toFixed(3)}`;
+    if (viewCache.has(key)) return viewCache.get(key);
     const pin = pinFor(code), b = pin.box;
-    const aspect = WORLD_H / WORLD_W;
+    const aspect = WORLD_ASPECT;
     const size = Math.max(b.maxX - b.minX, (b.maxY - b.minY) / aspect);
     const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-    function frame(w) {
-      const h = w * aspect;
+    function frame(worldW) {
+      const w = worldW * Math.sqrt(aspect / mapAspect); // same area as a 2:1 view
+      const h = w * mapAspect;
       // centre on the country, keeping the pin clear of the sides and with
       // headroom above it for the pin graphic
       let x = clamp(cx - w / 2, pin.x - 0.82 * w, pin.x - 0.18 * w);
@@ -260,9 +269,29 @@
       w = Math.min(MAX_W, w * 1.15);
       v = frame(w);
     }
-    viewCache.set(code, v);
+    viewCache.set(key, v);
     return v;
   }
+
+  // In the app (where the page reserves room for its own keyboard), stretch
+  // the map during a run so the answer box sits just above the keyboard.
+  // Only on the stacked phone layout, where the map is above the box.
+  const stacked = window.matchMedia("(max-width: 950px)");
+  function fitMap() {
+    let h = "";
+    if (document.body.classList.contains("kb-open") && !el.panel.hidden && stacked.matches) {
+      const kbH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kb-h")) || 0;
+      const room = window.innerHeight - kbH - 12 - (el.panel.getBoundingClientRect().bottom + window.scrollY);
+      const w = el.map.clientWidth;
+      h = `${Math.round(Math.max(w * WORLD_ASPECT, Math.min(w * 1.6, el.map.clientHeight + room)))}px`;
+    }
+    if (el.map.style.height === h) return;
+    el.map.style.height = h;
+    mapAspect = h ? el.map.clientHeight / el.map.clientWidth : WORLD_ASPECT;
+    if (run && run.target) zoomTo(viewFor(run.target.code));
+    else placePin();
+  }
+  window.addEventListener("resize", () => requestAnimationFrame(fitMap));
 
   const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -366,6 +395,7 @@
     el.start.hidden = which !== "start";
     el.panel.hidden = which !== "game";
     el.end.hidden = which !== "end";
+    requestAnimationFrame(fitMap); // after the keyboard shows or hides
   }
 
   function startRun() {
@@ -559,6 +589,7 @@
   el.startBtn.addEventListener("click", startRun);
   el.playagain.addEventListener("click", startRun);
   MapGame.setupMenu({ onReset: startRun });
+  MapGame.setupKeyboard(el.guess);
 
   // ---------- Init ----------
 

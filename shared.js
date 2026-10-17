@@ -265,5 +265,108 @@ window.MapGame = (function () {
     }
   }
 
-  return { normalize, lookup, suggest, sound, buildMap, setupVoice, setupMenu };
+  // ---------- On-screen keyboard (iOS app) ----------
+
+  // In the iOS app (which tags <html> with .native-app) the system keyboard is
+  // swapped for the game's own: Apple's letter-key size and spacing, but no
+  // predictive-text bar, emoji/dictation row or Done bar — more room for the
+  // map, and no typing help. Hardware keyboards still type into the field.
+  const KB_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+
+  function setupKeyboard(input) {
+    if (!document.documentElement.classList.contains("native-app")) return;
+    input.setAttribute("inputmode", "none"); // no system keyboard
+
+    const kb = document.createElement("div");
+    kb.className = "kb";
+    kb.hidden = true;
+    function key(label, k, cls) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.tabIndex = -1;
+      b.className = cls ? `kb-key ${cls}` : "kb-key";
+      b.textContent = label;
+      b.dataset.k = k;
+      return b;
+    }
+    function row(...keys) {
+      const r = document.createElement("div");
+      r.className = "kb-row";
+      r.append(...keys);
+      kb.appendChild(r);
+    }
+    const letters = (s) => [...s].map((ch) => key(ch.toUpperCase(), ch, "letter"));
+    const spacer = document.createElement("span");
+    spacer.className = "kb-side";
+    row(...letters(KB_ROWS[0]));
+    row(...letters(KB_ROWS[1]));
+    row(spacer, ...letters(KB_ROWS[2]), key("⌫", "back", "special kb-side"));
+    row(key("space", " ", "space"), key("return", "enter", "special return"));
+    document.body.appendChild(kb);
+
+    // Words are capitalized as they're typed, like autocapitalize="words".
+    function press(k) {
+      if (input.disabled) return;
+      if (k === "enter") {
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        return;
+      }
+      let v = input.value;
+      const wordStart = !v || v.endsWith(" ");
+      if (k === "back") v = v.slice(0, -1);
+      else if (k === " ") { if (wordStart) return; v += " "; }
+      else v += wordStart ? k.toUpperCase() : k;
+      input.value = v;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    // Keys act on touch-down and never take focus, so the field keeps its
+    // focus (and its open suggestion). Holding ⌫ repeats, like Apple's.
+    const downKeys = new Map(); // pointerId -> key button
+    let repeatTimer = null;
+    function stopRepeat() { clearTimeout(repeatTimer); clearInterval(repeatTimer); repeatTimer = null; }
+    kb.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const b = e.target.closest(".kb-key");
+      if (!b) return;
+      b.classList.add("down");
+      downKeys.set(e.pointerId, b);
+      press(b.dataset.k);
+      if (b.dataset.k === "back") {
+        stopRepeat();
+        repeatTimer = setTimeout(() => { repeatTimer = setInterval(() => press("back"), 90); }, 450);
+      }
+    });
+    function release(e) {
+      const b = downKeys.get(e.pointerId);
+      if (!b) return;
+      downKeys.delete(e.pointerId);
+      b.classList.remove("down");
+      if (b.dataset.k === "back") stopRepeat();
+    }
+    document.addEventListener("pointerup", release);
+    document.addEventListener("pointercancel", release);
+    // On iOS a tap blurs the field unless its touch and mouse events are
+    // cancelled too (pointerdown alone isn't enough).
+    kb.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+    kb.addEventListener("mousedown", (e) => e.preventDefault());
+
+    // Shown whenever the field is on screen; dimmed while it's disabled.
+    // The page reserves the keyboard's height at the bottom so nothing
+    // ends up hidden behind it.
+    function update() {
+      const show = input.offsetParent !== null;
+      if (kb.hidden === show) kb.hidden = !show;
+      kb.classList.toggle("off", input.disabled);
+      document.body.classList.toggle("kb-open", show);
+      if (show) document.documentElement.style.setProperty("--kb-h", `${kb.offsetHeight}px`);
+    }
+    new MutationObserver(update).observe(document.body, {
+      subtree: true, attributes: true, attributeFilter: ["hidden", "disabled"],
+    });
+    window.addEventListener("resize", update);
+    update();
+  }
+
+  return { normalize, lookup, suggest, sound, buildMap, setupVoice, setupMenu, setupKeyboard };
 })();

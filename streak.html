@@ -17,8 +17,10 @@
     <div class="menu" id="menu">
       <button id="menuBtn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
       <div class="menu-dropdown" id="menuDropdown" role="menu" hidden>
+        <a href="index.html" role="menuitem">🏠 Home</a>
+        <hr>
         <div class="menu-label">Mode</div>
-        <a href="index.html" role="menuitemradio" aria-checked="false">🔤 Alphabet</a>
+        <a href="alphabet.html" role="menuitemradio" aria-checked="false">🔤 Alphabet</a>
         <a href="streak.html" role="menuitemradio" aria-checked="true" class="checked">⏱ Streak</a>
         <hr>
         <button id="soundToggle" role="menuitemcheckbox" aria-checked="true">🔊 Sound: On</button>
@@ -45,23 +47,15 @@
       </div>
 
       <div class="panel" id="gamePanel" hidden>
-        <div class="prompt">Which country is under the pin?</div>
         <div class="inputrow">
           <input id="guess" type="text" autocomplete="off" autocapitalize="words"
                  spellcheck="false" placeholder="Type a country…" aria-label="Country guess">
+          <button id="skipBtn" title="Skip this country (−5s)">Skip</button>
           <button id="micBtn" title="Speak a country" aria-label="Voice input">🎤</button>
           <div id="suggestions" role="listbox"></div>
         </div>
 
         <div id="feedback" class="info"></div>
-
-        <div class="actions">
-          <button id="skipBtn">Skip (−5s)</button>
-        </div>
-        <div class="hint">
-          Type at least 3 letters for a suggestion, or tap the mic and say the
-          country. Right +5s · wrong −5s · skip −5s.
-        </div>
       </div>
 
       <div class="panel" id="endscreen" hidden>

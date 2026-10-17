@@ -3,86 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>MapGame — Alphabet Mode</title>
+<title>MapGame</title>
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="home">
 <div class="wrap">
-  <header>
-    <span class="letters-progress" id="lettersProgress"></span>
-    <span class="total" id="totalProgress"></span>
-    <div class="menu" id="menu">
-      <button id="menuBtn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
-      <div class="menu-dropdown" id="menuDropdown" role="menu" hidden>
-        <div class="menu-label">Mode</div>
-        <a href="index.html" role="menuitemradio" aria-checked="true" class="checked">🔤 Alphabet</a>
-        <a href="streak.html" role="menuitemradio" aria-checked="false">⏱ Streak</a>
-        <hr>
-        <button id="soundToggle" role="menuitemcheckbox" aria-checked="true">🔊 Sound: On</button>
-        <button id="resetBtn" role="menuitem">↺ Reset game</button>
-      </div>
-    </div>
+  <header class="home-head">
+    <h1>MapGame</h1>
+    <p>How well do you know the world's 197 countries?</p>
   </header>
 
-  <div class="letters" id="letterStrip"></div>
-
-  <div class="layout">
-    <div>
-      <div class="panel" id="gamePanel">
-        <div class="letter-row">
-          <div class="big-letter" id="bigLetter">A</div>
-          <div class="counts">
-            <b id="letterHeadline"></b>
-            <div class="nums">
-              <span><b id="nTotal">0</b>total</span>
-              <span><b id="nFound">0</b>found</span>
-              <span><b id="nLeft">0</b>remaining</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="inputrow">
-          <input id="guess" type="text" autocomplete="off" autocapitalize="words"
-                 spellcheck="false" placeholder="Type a country…" aria-label="Country guess">
-          <button id="micBtn" title="Speak a country" aria-label="Voice input">🎤</button>
-          <div id="suggestions" role="listbox"></div>
-        </div>
-
-        <div id="feedback" class="info"></div>
-        <div class="chips" id="foundChips"></div>
-
-        <div class="actions">
-          <button id="backBtn" class="nav" title="Previous letter" aria-label="Previous letter">←</button>
-          <button id="skipBtn">Reveal answers</button>
-          <button id="nextBtn" class="nav" title="Next letter" aria-label="Next letter">→</button>
-        </div>
-        <div class="hint">
-          Type at least 3 letters for a suggestion, or tap the mic and say country names.
-          Click a letter above to jump around; letters with no countries are skipped.
-        </div>
-      </div>
-
-      <div class="panel" id="endscreen" hidden>
-        <h2>Finished! 🌍</h2>
-        <div class="score" id="finalScore"></div>
-        <div class="pct" id="finalPct"></div>
-        <div id="breakdown"></div>
-        <div id="missedlist"></div>
-        <button id="playagain">Play again</button>
-      </div>
-    </div>
-
-    <div class="mapbox">
-      <svg id="map" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="World map"></svg>
-    </div>
-  </div>
+  <nav class="modes" aria-label="Game modes">
+    <a class="mode-card" href="alphabet.html">
+      <span class="mode-icon" aria-hidden="true">🔤</span>
+      <span class="mode-text">
+        <b>Alphabet</b>
+        <span>Name every country, letter by letter, A to Z.</span>
+        <small id="alphabetStat"></small>
+      </span>
+      <span class="mode-go" aria-hidden="true">›</span>
+    </a>
+    <a class="mode-card" href="streak.html">
+      <span class="mode-icon" aria-hidden="true">⏱</span>
+      <span class="mode-text">
+        <b>Streak</b>
+        <span>Name the country under the pin, against the clock.</span>
+        <small id="streakStat"></small>
+      </span>
+      <span class="mode-go" aria-hidden="true">›</span>
+    </a>
+  </nav>
 </div>
 
-<!-- ?v= busts old browser caches from before _headers enforced revalidation;
-     bump it only if stale-JS reports ever come back -->
-<script src="map-data.js?v=2"></script>
 <script src="countries.js?v=2"></script>
-<script src="shared.js"></script>
-<script src="app.js?v=2"></script>
+<script src="home.js"></script>
 </body>
 </html>

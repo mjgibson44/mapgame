@@ -425,6 +425,7 @@
   }
 
   MapGame.setupMenu({ onReset: resetGame });
+  MapGame.setupKeyboard(el.guess);
 
   el.playagain.addEventListener("click", resetGame);
 
