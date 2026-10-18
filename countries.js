@@ -224,3 +224,24 @@ const COUNTRIES = [
   { name: "Zambia", code: "ZM" },
   { name: "Zimbabwe", code: "ZW" },
 ];
+
+// Map areas for Streak Mode. Every country is in exactly one: countries made
+// up entirely of islands go in "Global Islands" whichever continent they're
+// near (so the UK, Japan and Cuba aren't in Europe, Asia or the Americas),
+// and Australia counts as Asia.
+const REGIONS = [
+  { id: "americas", name: "Americas", codes:
+    "AR BO BR BZ CA CL CO CR EC GT GY HN MX NI PA PE PY SR SV US UY VE" },
+  { id: "europe", name: "Europe", codes:
+    "AD AL AT BA BE BG BY CH CZ DE DK EE ES FI FR GR HR HU IT LI LT LU LV MC MD ME MK NL NO PL PT RO RS RU SE SI SK SM UA VA XK" },
+  { id: "asia", name: "Asia", codes:
+    "AE AF AM AU AZ BD BT CN GE IL IN IQ IR JO KG KH KP KR KW KZ LA LB MM MN MY NP OM PK PS QA SA SY TH TJ TM TR UZ VN YE" },
+  { id: "africa", name: "Africa", codes:
+    "AO BF BI BJ BW CD CF CG CI CM DJ DZ EG ER ET GA GH GM GN GQ GW KE LR LS LY MA ML MR MW MZ NA NE NG RW SD SL SN SO SS SZ TD TG TN TZ UG ZA ZM ZW" },
+  { id: "islands", name: "Global Islands", codes:
+    "AG BB BS CU DM DO GD HT JM KN LC TT VC " +   // Caribbean
+    "CV KM MG MU SC ST " +                        // Africa
+    "CY GB IE IS MT " +                           // Europe
+    "BH BN ID JP LK MV PH SG TL TW " +            // Asia
+    "FJ FM KI MH NR NZ PG PW SB TO TV VU WS" },   // Pacific
+].map((r) => ({ ...r, codes: r.codes.split(" ") }));

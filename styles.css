@@ -14,6 +14,8 @@
   --map-stroke: #555;
   --map-guessed: #1c1c1c;
   --map-solid: #cfcec7;    /* land on the borderless (streak) map */
+  --map-on: #9e9d95;       /* streak start screen: land in the chosen areas… */
+  --map-off: #dddcd6;      /* …and outside them */
   --kb-bg: #e2e1dc;        /* in-app keyboard: tray, letter keys, ⌫/return */
   --kb-key: #ffffff;
   --kb-special: #c4c3bb;
@@ -35,6 +37,8 @@
     --map-stroke: #9b9a90;
     --map-guessed: #ecebe3;
     --map-solid: #4a4943;
+    --map-on: #8b8a81;
+    --map-off: #353531;
     --kb-bg: #232321;
     --kb-key: #57564f;
     --kb-special: #383834;
@@ -45,7 +49,7 @@
   --paper: #131311; --card: #1c1c1a; --line: #32322e;
   --good: #5cbd7d; --bad: #e5695c;
   --map-bg: #151513; --map-land: #1c1c1a; --map-stroke: #9b9a90; --map-guessed: #ecebe3;
-  --map-solid: #4a4943;
+  --map-solid: #4a4943; --map-on: #8b8a81; --map-off: #353531;
   --kb-bg: #232321; --kb-key: #57564f; --kb-special: #383834;
 }
 :root[data-theme="light"] {
@@ -53,7 +57,7 @@
   --paper: #fafaf8; --card: #ffffff; --line: #e2e2de;
   --good: #1a7f37; --bad: #b42318;
   --map-bg: #efefec; --map-land: #ffffff; --map-stroke: #555; --map-guessed: #1c1c1c;
-  --map-solid: #cfcec7;
+  --map-solid: #cfcec7; --map-on: #9e9d95; --map-off: #dddcd6;
   --kb-bg: #e2e1dc; --kb-key: #ffffff; --kb-special: #c4c3bb;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -252,6 +256,19 @@ button.primary {
   width: 100%; font-size: 17px; padding: 13px 26px; border-radius: 10px; border: none;
   background: var(--ink); color: var(--on-ink); font-weight: 600;
 }
+button.primary:disabled { opacity: 0.35; cursor: default; }
+.areas-label { font-size: 13px; font-weight: 600; color: var(--ink-soft); margin-bottom: 8px; }
+.areas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.areas button {
+  font-size: 14px; padding: 7px 12px; border-radius: 999px;
+  border: 1.5px solid var(--ink-soft); background: var(--card); color: var(--ink-soft);
+}
+.areas button small { margin-left: 6px; font-size: 12px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.areas button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+button.link {
+  display: block; margin: 10px auto 0; padding: 6px 10px; border: none; background: none;
+  color: var(--ink-soft); font-size: 14px; text-decoration: underline; text-underline-offset: 3px;
+}
 .streak-mode .inputrow { margin-top: 0; }
 /* the mic sits in the header, left of the menu, styled like the menu button */
 .streak-mode header #micBtn {
@@ -280,6 +297,10 @@ button.primary {
 #map.borderless .dot { display: none; }
 #map.borderless .dot { fill: var(--map-solid); stroke: var(--map-stroke); }
 #map.borderless .dot.target { display: inline; }
+/* start screen: fade land outside the chosen areas; show island microstates */
+#map.borderless.preview .land { fill: var(--map-on); stroke: var(--map-on); }
+#map.borderless.preview .land.area-off { fill: var(--map-off); stroke: var(--map-off); }
+#map.borderless.preview .dot:not(.area-off) { display: inline; fill: var(--map-on); }
 #map .land.reveal-good, #map .dot.reveal-good { fill: var(--good); stroke: var(--good); }
 #map .land.reveal-bad, #map .dot.reveal-bad { fill: var(--bad); stroke: var(--bad); }
 #map .land.reveal-wrong, #map .dot.reveal-wrong { fill: var(--bad); stroke: var(--bad); opacity: 0.45; }
