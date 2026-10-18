@@ -42,8 +42,15 @@ only), and you type the country it's sitting on.
 - You start with **60 seconds**. A right answer adds **+5s**, a wrong country
   takes **−5s** (and briefly shades the country you guessed, so you learn
   where it is), and **Skip** also costs −5s and shows you the answer.
+- **Map areas** — on the start screen, toggle which parts of the world pins
+  drop in: **Americas**, **Europe**, **Asia** (Australia included),
+  **Africa** and **Global Islands**. Every country made up entirely of
+  islands is in Global Islands rather than its continent — the UK, Iceland,
+  Japan, Indonesia, Madagascar, Cuba, New Zealand, the Pacific and Caribbean
+  island nations and so on. The map previews your pick, and the choice is
+  remembered. "Change map areas" on the end screen takes you back to it.
 - Your score is how many you name before the clock hits zero; your best is
-  saved on the device.
+  saved on the device, separately for each choice of map areas.
 - The pin sits at the visual centre of the country, and the map zooms so
   the whole country fills a good part of the view: close enough to see
   exactly where the pin is, but zoomed out further whenever the view would be
@@ -125,7 +132,7 @@ North Macedonia and North Korea under **N**, Eswatini under **E**.
 | `shared.js` | Shared by both modes: answer matching, autocomplete, sound, map drawing, voice, menu, the iOS app's keyboard |
 | `app.js` | Alphabet Mode logic: letters, scoring, save/restore |
 | `streak.js` | Streak Mode logic: clock, random countries, pin placement and zoom |
-| `countries.js` | The 197 countries with ISO codes and accepted aliases |
+| `countries.js` | The 197 countries with ISO codes and accepted aliases, and the Streak Mode map areas |
 | `map-data.js` | Generated world-map SVG paths (Natural Earth 110m data, Natural Earth projection) |
 | `ios/` | Xcode project for the iOS app |
 

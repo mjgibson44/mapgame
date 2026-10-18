@@ -2,7 +2,8 @@
 (function () {
   "use strict";
 
-  const BEST_KEY = "mapgame-streak-best";
+  const BEST_KEY = "mapgame-streak-best";  // all areas; other picks get their own best
+  const AREAS_KEY = "mapgame-streak-areas";
   const START_MS = 60000;  // clock at the start of a run
   const RIGHT_MS = 5000;   // added for a right answer
   const WRONG_MS = 5000;   // taken off for a wrong answer
@@ -18,15 +19,42 @@
     start: $("startPanel"), startBest: $("startBest"), startBtn: $("startBtn"),
     panel: $("gamePanel"), guess: $("guess"), mic: $("micBtn"), sug: $("suggestions"),
     feedback: $("feedback"), skip: $("skipBtn"),
+    areas: $("areas"),
     end: $("endscreen"), finalScore: $("finalScore"), finalBest: $("finalBest"),
-    resultChips: $("resultChips"), playagain: $("playagain"),
+    resultChips: $("resultChips"), playagain: $("playagain"), changeAreas: $("changeAreas"),
     map: $("map"),
   };
 
   // ---------- State ----------
 
+  // Which map areas (REGIONS ids) the pins drop in; all of them by default.
+  let areas = REGIONS.map((r) => r.id);
+  try {
+    const saved = JSON.parse(localStorage.getItem(AREAS_KEY) || "null");
+    if (Array.isArray(saved)) {
+      const valid = areas.filter((id) => saved.includes(id));
+      if (valid.length) areas = valid;
+    }
+  } catch (e) {}
+  const allAreas = () => areas.length === REGIONS.length;
+  const areaNames = () => REGIONS.filter((r) => areas.includes(r.id)).map((r) => r.name).join(" + ");
+
+  // A best score per choice of areas, so a run on one continent doesn't
+  // compete with runs on the whole world. All areas keeps the original key.
+  const bestKey = () => (allAreas() ? BEST_KEY : `${BEST_KEY}:${areas.join("+")}`);
   let best = 0;
-  try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) {}
+  function loadBest() {
+    best = 0;
+    try { best = Number(localStorage.getItem(bestKey())) || 0; } catch (e) {}
+  }
+  loadBest();
+
+  const regionOf = new Map(REGIONS.flatMap((r) => r.codes.map((code) => [code, r.id])));
+  let pool = [];
+  function updatePool() {
+    pool = COUNTRIES.filter((c) => areas.includes(regionOf.get(c.code)));
+  }
+  updatePool();
 
   let run = null; // { deck, target, streak, remainingMs, correct: [], missed: [] }
   let running = false;  // clock ticking
@@ -320,6 +348,17 @@
   function clearReveals() {
     for (const list of copies.values()) for (const node of list) node.classList.remove("target", ...REVEALS);
   }
+
+  // On the start screen, the whole world with the chosen areas shaded in
+  // (island microstates shown as dots) and the rest faded out. Cleared for
+  // a run, where the fade would give away borders.
+  function previewAreas(on) {
+    el.map.classList.toggle("preview", on);
+    for (const [code, list] of copies) {
+      const off = on && !areas.includes(regionOf.get(code));
+      for (const node of list) node.classList.toggle("area-off", off);
+    }
+  }
   function reveal(code, kind) {
     for (const node of nodesOf(code)) node.classList.add(`reveal-${kind}`);
   }
@@ -392,6 +431,12 @@
   }
 
   function showPanel(which) {
+    if (which === "start") {
+      clearReveals();
+      pinAt = null;
+      zoomTo({ x: 0, y: 0, w: WORLD_W, h: WORLD_H });
+    }
+    previewAreas(which === "start");
     el.start.hidden = which !== "start";
     el.panel.hidden = which !== "game";
     el.end.hidden = which !== "end";
@@ -401,7 +446,8 @@
 
   function startRun() {
     clearTimeout(nextTimer);
-    run = { deck: shuffled(COUNTRIES), target: null, streak: 0, remainingMs: START_MS, correct: [], missed: [] };
+    if (!pool.length) return;
+    run = { deck: shuffled(pool), target: null, streak: 0, remainingMs: START_MS, correct: [], missed: [] };
     busy = false;
     showPanel("game");
     setFeedback("", "info");
@@ -413,7 +459,7 @@
 
   function nextCountry() {
     clearReveals();
-    if (!run.deck.length) run.deck = shuffled(COUNTRIES); // went through all 197!
+    if (!run.deck.length) run.deck = shuffled(pool); // went through every country!
     run.target = run.deck.pop();
     for (const node of nodesOf(run.target.code)) node.classList.add("target");
     pinAt = pinFor(run.target.code);
@@ -497,7 +543,8 @@
     renderScore();
     showPanel("end");
     el.finalScore.textContent = `${run.streak} ${run.streak === 1 ? "country" : "countries"}`;
-    el.finalBest.textContent = newBest ? "🏆 New personal best!" : `Your best: ${best}`;
+    const where = allAreas() ? "" : ` (${areaNames()})`;
+    el.finalBest.textContent = newBest ? `🏆 New personal best${where}!` : `Your best${where}: ${best}`;
     el.resultChips.innerHTML = "";
     for (const c of run.correct) {
       const s = document.createElement("span");
@@ -557,7 +604,7 @@
   }
 
   el.guess.addEventListener("input", () => {
-    sug = MapGame.suggest(el.guess.value, COUNTRIES);
+    sug = MapGame.suggest(el.guess.value, pool);
     renderSuggestions();
   });
   el.guess.addEventListener("keydown", (e) => {
@@ -589,12 +636,52 @@
   el.skip.addEventListener("click", skip);
   el.startBtn.addEventListener("click", startRun);
   el.playagain.addEventListener("click", startRun);
+  el.changeAreas.addEventListener("click", () => {
+    clearTimeout(nextTimer);
+    run = null;
+    renderAreas();
+    renderScore();
+    renderClock();
+    showPanel("start");
+  });
   MapGame.setupMenu({ onReset: startRun });
   MapGame.setupKeyboard(el.guess);
 
+  // ---------- Map areas ----------
+
+  const areaBtns = REGIONS.map((r) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.id = r.id;
+    b.innerHTML = `${r.name}<small>${r.codes.length}</small>`;
+    b.addEventListener("click", () => {
+      areas = areas.includes(r.id)
+        ? areas.filter((id) => id !== r.id)
+        : REGIONS.map((x) => x.id).filter((id) => id === r.id || areas.includes(id));
+      try { localStorage.setItem(AREAS_KEY, JSON.stringify(areas)); } catch (e) {}
+      updatePool();
+      loadBest();
+      renderAreas();
+      renderScore();
+      previewAreas(true);
+    });
+    el.areas.appendChild(b);
+    return b;
+  });
+
+  function renderAreas() {
+    for (const b of areaBtns) b.setAttribute("aria-pressed", String(areas.includes(b.dataset.id)));
+    el.startBtn.disabled = !pool.length;
+    if (!pool.length) el.startBest.textContent = "Pick at least one area to play.";
+    else {
+      const count = `${pool.length} ${pool.length === 1 ? "country" : "countries"}`;
+      el.startBest.textContent = best ? `${count} · your best: ${best}` : count;
+    }
+  }
+
   // ---------- Init ----------
 
-  el.startBest.textContent = best ? `Your best: ${best}` : "";
+  renderAreas();
   renderScore();
   renderClock();
   showPanel("start");

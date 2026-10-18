@@ -43,6 +43,8 @@
           <li><b class="bad">−5s</b> for a wrong answer or a skip</li>
           <li>You start with <b>60 seconds</b> — how far can you get?</li>
         </ul>
+        <div class="areas-label" id="areasLabel">Map areas</div>
+        <div class="areas" id="areas" role="group" aria-labelledby="areasLabel"></div>
         <div class="best-line" id="startBest"></div>
         <button class="primary" id="startBtn">Start</button>
       </div>
@@ -64,6 +66,7 @@
         <div class="pct" id="finalBest"></div>
         <div class="chips" id="resultChips"></div>
         <button id="playagain">Play again</button>
+        <button class="link" id="changeAreas">Change map areas</button>
       </div>
     </div>
 
@@ -75,7 +78,7 @@
 </div>
 
 <script src="map-data.js?v=2"></script>
-<script src="countries.js?v=2"></script>
+<script src="countries.js?v=3"></script>
 <script src="shared.js"></script>
 <script src="streak.js"></script>
 </body>
