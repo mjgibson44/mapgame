@@ -20,7 +20,7 @@
     panel: $("gamePanel"), guess: $("guess"), mic: $("micBtn"), sug: $("suggestions"),
     feedback: $("feedback"), skip: $("skipBtn"),
     areas: $("areas"),
-    end: $("endscreen"), finalScore: $("finalScore"), finalBest: $("finalBest"),
+    end: $("endscreen"), endTitle: $("endTitle"), finalScore: $("finalScore"), finalBest: $("finalBest"),
     resultChips: $("resultChips"), playagain: $("playagain"), changeAreas: $("changeAreas"),
     map: $("map"),
   };
@@ -56,7 +56,7 @@
   }
   updatePool();
 
-  let run = null; // { deck, target, streak, remainingMs, correct: [], missed: [] }
+  let run = null; // { deck, target, pin, streak, remainingMs, correct: [], missed: [] }
   let running = false;  // clock ticking
   let busy = false;     // showing an answer between countries; input ignored
   let lastTick = 0;
@@ -158,14 +158,14 @@
   // for crescent-shaped countries), found by a coarse-to-fine grid search.
   // Also returns the bounding box of the country's major landmasses (so
   // Indonesia spans Sumatra to Papua, but France leaves out French Guiana),
-  // which sets how far to zoom in.
+  // which sets how far to zoom in, and how deep inside the centre is.
   const pinCache = new Map();
   function pinFor(code) {
     if (pinCache.has(code)) return pinCache.get(code);
     let pin;
     const dot = MAP_DATA.dots[code];
     if (dot) {
-      pin = { x: dot[0], y: dot[1], box: { minX: dot[0], maxX: dot[0], minY: dot[1], maxY: dot[1] } };
+      pin = { x: dot[0], y: dot[1], depth: 0, box: { minX: dot[0], maxX: dot[0], minY: dot[1], maxY: dot[1] } };
     } else {
       const rings = ringsOf(MAP_DATA.shapes[code].d);
       const ring = rings.reduce((a, b) => (ringArea(b) > ringArea(a) ? b : a));
@@ -187,9 +187,31 @@
         }
         cx = bx; cy = by; spanX /= 4; spanY /= 4;
       }
-      pin = { x: cx, y: cy, box: bboxOf(major.flat()) };
+      pin = { x: cx, y: cy, depth: bestD, box: bboxOf(major.flat()), rings, ringBox: bboxOf(ring) };
     }
     pinCache.set(code, pin);
+    return pin;
+  }
+
+  // Each time a larger country comes up, the pin goes somewhere random in
+  // its largest landmass rather than always dead centre, so it's the whole
+  // shape you learn, not one spot. It stays at least ~half as deep as the
+  // centre, well clear of coasts and borders, so it's never in doubt which
+  // side of a border it's on. Countries too small for that to make a
+  // difference (~100 of them) keep the centre.
+  const SPREAD_DEPTH = 5; // map units the centre must be from the edge
+  function pinSpot(code) {
+    const pin = pinFor(code);
+    if (pin.depth < SPREAD_DEPTH) return pin;
+    const minD = 0.45 * pin.depth;
+    const { minX, maxX, minY, maxY } = pin.ringBox;
+    for (let tries = 0; tries < 400; tries++) {
+      const x = minX + Math.random() * (maxX - minX), y = minY + Math.random() * (maxY - minY);
+      // odd = on land; even = sea, or a hole such as Lesotho inside South Africa
+      if (pin.rings.filter((r) => inside(x, y, r)).length % 2 === 0) continue;
+      if (pin.rings.some((r) => edgeDist(x, y, r) < minD)) continue;
+      return { x, y };
+    }
     return pin;
   }
 
@@ -269,17 +291,17 @@
   // in a little as well as showing more to the north and south.
   const MIN_W = 230, MAX_W = 560;
   const MIN_COAST = 120, BLOB_LAND = 0.2, MIN_LAND = 0.06;
-  const viewCache = new Map();
-  function viewFor(code) {
-    const key = `${code}@${mapAspect.toFixed(3)}`;
-    if (viewCache.has(key)) return viewCache.get(key);
+  // The zoom is worked out once per country (around its centre); the view
+  // is then framed around wherever the pin is this time.
+  const widthCache = new Map();
+  function viewFor(code, at) {
     const pin = pinFor(code), b = pin.box;
     const aspect = WORLD_ASPECT;
     const size = Math.max(b.maxX - b.minX, (b.maxY - b.minY) / aspect);
     const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-    function frame(worldW) {
+    function frame(worldW, pin) {
       const w = worldW * Math.sqrt(aspect / mapAspect); // same area as a 2:1 view
       const h = w * mapAspect;
       // centre on the country, keeping the pin clear of the sides and with
@@ -291,14 +313,16 @@
       return { x, y, w, h };
     }
 
-    let w = clamp(size * 2.5, MIN_W, MAX_W);
-    let v = frame(w);
-    for (let s = scenery(v); ((s.coast < MIN_COAST && s.land > BLOB_LAND) || s.land < MIN_LAND) && w < MAX_W; s = scenery(v)) {
-      w = Math.min(MAX_W, w * 1.15);
-      v = frame(w);
+    const key = `${code}@${mapAspect.toFixed(3)}`;
+    let w = widthCache.get(key);
+    if (w === undefined) {
+      w = clamp(size * 2.5, MIN_W, MAX_W);
+      for (let s = scenery(frame(w, pin)); ((s.coast < MIN_COAST && s.land > BLOB_LAND) || s.land < MIN_LAND) && w < MAX_W; s = scenery(frame(w, pin))) {
+        w = Math.min(MAX_W, w * 1.15);
+      }
+      widthCache.set(key, w);
     }
-    viewCache.set(key, v);
-    return v;
+    return frame(w, at || pin);
   }
 
   // In the app (where the page reserves room for its own keyboard), stretch
@@ -316,7 +340,7 @@
     if (el.map.style.height === h) return;
     el.map.style.height = h;
     mapAspect = h ? el.map.clientHeight / el.map.clientWidth : WORLD_ASPECT;
-    if (run && run.target) zoomTo(viewFor(run.target.code));
+    if (run && run.target) zoomTo(viewFor(run.target.code, run.pin));
     else placePin();
   }
   window.addEventListener("resize", () => requestAnimationFrame(fitMap));
@@ -459,11 +483,11 @@
 
   function nextCountry() {
     clearReveals();
-    if (!run.deck.length) run.deck = shuffled(pool); // went through every country!
     run.target = run.deck.pop();
+    run.pin = pinSpot(run.target.code);
     for (const node of nodesOf(run.target.code)) node.classList.add("target");
-    pinAt = pinFor(run.target.code);
-    zoomTo(viewFor(run.target.code));
+    pinAt = run.pin;
+    zoomTo(viewFor(run.target.code, run.pin));
     busy = false;
     el.guess.disabled = false;
     el.skip.disabled = false;
@@ -473,14 +497,16 @@
     resume();
   }
 
-  // Pause on the answer for a moment, then move to the next country.
+  // Pause on the answer for a moment, then move to the next country — or,
+  // once every country has been named, finish the run.
   function between(ms) {
     busy = true;
     pause();
     el.skip.disabled = true;
     nextTimer = setTimeout(() => {
       setFeedback("", "info");
-      nextCountry();
+      if (run.deck.length) nextCountry();
+      else endRun(true);
     }, ms);
   }
 
@@ -507,21 +533,26 @@
     }
   }
 
+  // A skipped country goes to the back of the deck: the run is only
+  // complete once every country has been named.
   function skip() {
     if (!running || busy) return;
     const t = run.target;
-    run.missed.push(t);
+    if (!run.missed.includes(t)) run.missed.push(t);
+    run.deck.unshift(t);
     sound("wrong");
     reveal(t.code, "bad");
     setFeedback(`That was ${t.name}.`, "err");
     if (adjustTime(-SKIP_MS)) between(1400);
   }
 
-  function endRun() {
+  // complete: every country named (the clock keeps what was left);
+  // otherwise time ran out.
+  function endRun(complete = false) {
     pause();
     clearTimeout(nextTimer);
     busy = true;
-    run.remainingMs = 0;
+    if (!complete) run.remainingMs = 0;
     renderClock();
     voice.stop();
     closeSuggestions();
@@ -529,29 +560,34 @@
     el.guess.blur();
     // show where the last one was
     const t = run.target;
-    if (t && !run.correct.includes(t) && !run.missed.includes(t)) {
-      run.missed.push(t);
+    if (t && !run.correct.includes(t)) {
+      if (!run.missed.includes(t)) run.missed.push(t);
       reveal(t.code, "bad");
     }
-    sound("gameover");
+    sound(complete ? "complete" : "gameover");
 
     const newBest = run.streak > best;
     if (newBest) {
       best = run.streak;
-      try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
+      try { localStorage.setItem(bestKey(), String(best)); } catch (e) {}
     }
     renderScore();
     showPanel("end");
+    el.endTitle.textContent = complete ? "Complete! 🎉" : "Time's up! ⏱";
     el.finalScore.textContent = `${run.streak} ${run.streak === 1 ? "country" : "countries"}`;
     const where = allAreas() ? "" : ` (${areaNames()})`;
-    el.finalBest.textContent = newBest ? `🏆 New personal best${where}!` : `Your best${where}: ${best}`;
+    const bestLine = newBest ? `🏆 New personal best${where}!` : `Your best${where}: ${best}`;
+    el.finalBest.textContent = complete
+      ? `You named every country${where}, with ${fmt(run.remainingMs)} to spare.${newBest ? " 🏆" : ""}`
+      : bestLine;
     el.resultChips.innerHTML = "";
     for (const c of run.correct) {
       const s = document.createElement("span");
       s.textContent = c.name;
       el.resultChips.appendChild(s);
     }
-    for (const c of run.missed) {
+    // skipped ones named later count as named
+    for (const c of run.missed.filter((c) => !run.correct.includes(c))) {
       const s = document.createElement("span");
       s.className = "missed";
       s.textContent = c.name;

@@ -85,7 +85,7 @@ window.MapGame = (function () {
 
   // kind: "correct" (rising ding) | "wrong" (low descending buzz, real country
   // at the wrong time) | "nomatch" (soft tick, input didn't match any country)
-  // | "gameover" (falling three-note phrase)
+  // | "gameover" (falling three-note phrase) | "complete" (rising arpeggio)
   function sound(kind) {
     if (muted) return;
     try {
@@ -98,6 +98,11 @@ window.MapGame = (function () {
       } else if (kind === "wrong") {
         note(196, "square", t, 0.12, 0.05);         // G3
         note(147, "square", t + 0.1, 0.2, 0.05);    // D3
+      } else if (kind === "complete") {
+        note(523.25, "triangle", t, 0.16, 0.12);        // C5
+        note(659.25, "triangle", t + 0.13, 0.16, 0.12); // E5
+        note(783.99, "triangle", t + 0.26, 0.16, 0.12); // G5
+        note(1046.5, "triangle", t + 0.39, 0.6, 0.13);  // C6
       } else if (kind === "gameover") {
         note(523.25, "triangle", t, 0.18, 0.12);        // C5
         note(392, "triangle", t + 0.16, 0.18, 0.12);    // G4
