@@ -72,13 +72,18 @@
     </div>
 
     <div class="mapbox">
-      <svg id="map" class="borderless" xmlns="http://www.w3.org/2000/svg" role="img"
-           aria-label="World map with a pin on the mystery country"></svg>
+      <div class="mapwrap">
+        <svg id="map" class="borderless" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="World map with a pin on the mystery country"></svg>
+        <svg id="inset" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="Close-up of the mystery island country" hidden></svg>
+      </div>
     </div>
   </div>
 </div>
 
 <script src="map-data.js?v=2"></script>
+<script src="map-detail.js"></script>
 <script src="countries.js?v=3"></script>
 <script src="shared.js"></script>
 <script src="streak.js"></script>
