@@ -305,10 +305,10 @@ button.link {
 #map .land.reveal-bad, #map .dot.reveal-bad { fill: var(--bad); stroke: var(--bad); }
 #map .land.reveal-wrong, #map .dot.reveal-wrong { fill: var(--bad); stroke: var(--bad); opacity: 0.45; }
 #map .dot.reveal-wrong { display: inline; }
-#map .pin { pointer-events: none; }
-#map .pin-head { fill: var(--bad); stroke: var(--card); stroke-width: 1.4; }
-#map .pin-hole { fill: var(--card); }
-#map .pin-pulse {
+.mapwrap .pin, .mapwrap .close-mark { pointer-events: none; }
+.mapwrap .pin-head { fill: var(--bad); stroke: var(--card); stroke-width: 1.4; }
+.mapwrap .pin-hole { fill: var(--card); }
+.mapwrap .pin-pulse {
   fill: none; stroke: var(--bad); stroke-width: 1.5;
   transform-box: fill-box; transform-origin: center; animation: pin-pulse 1.6s ease-out infinite;
 }
@@ -316,6 +316,32 @@ button.link {
   0% { transform: scale(0.4); opacity: 0.9; }
   100% { transform: scale(2.6); opacity: 0; }
 }
+
+/* Small islands: a close-up inset in the corner with the country shaded
+   darker than its neighbours (Natural Earth 10m outlines; round-capped
+   strokes keep islets smaller than a pixel visible as dots), and on the main
+   map the island drawn at least a few pixels across, circled, with a line to
+   the inset. */
+.mapwrap { position: relative; }
+#inset {
+  position: absolute; right: 8px; bottom: 8px; width: 42%; max-width: 260px; height: auto; aspect-ratio: 1;
+  background: var(--map-bg); border: 2px solid var(--card); border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--line), 0 2px 8px rgba(0,0,0,0.18);
+}
+#inset.show { animation: inset-in 0.45s ease-out; }
+@keyframes inset-in { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+#inset .close-land, #inset .close-shape, #map .close-shape {
+  fill: var(--map-solid); stroke: var(--map-solid); stroke-width: 1.5px; vector-effect: non-scaling-stroke;
+  stroke-linejoin: round; stroke-linecap: round; transition: fill 0.35s, stroke 0.35s;
+}
+#inset .close-shape, #map .close-shape { fill: var(--map-on); stroke: var(--map-on); }
+#inset .close-shape { stroke-width: 2.5px; } /* atolls */
+#map .close-shape { stroke-width: 3px; }
+#map .close-ring { fill: none; stroke: var(--bad); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+#map .close-leader { stroke: var(--bad); stroke-width: 1.5px; vector-effect: non-scaling-stroke; opacity: 0.7; }
+#map .close-shape.reveal-good, #inset .close-shape.reveal-good { fill: var(--good); stroke: var(--good); }
+#map .close-shape.reveal-bad, #inset .close-shape.reveal-bad { fill: var(--bad); stroke: var(--bad); }
+@media (prefers-reduced-motion: reduce) { #inset.show { animation: none; } }
 
 .hint { margin-top: 14px; font-size: 12.5px; color: var(--ink-faint); line-height: 1.5; }
 [hidden] { display: none !important; }

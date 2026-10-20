@@ -58,6 +58,11 @@ only), and you type the country it's sitting on.
   coastline to tell which continent you're on. The map wraps around the
   Pacific like a globe. Microstates too small to draw show as a dot under
   the pin.
+- **Island close-ups** — island countries too small to see at that zoom
+  (Malta, the Maldives, the Caribbean and Pacific islands, Singapore, Trinidad,
+  Cyprus, …) get a close-up inset in the corner of the map, drawn from
+  detailed outlines, with the country shaded darker than its neighbours. On the
+  main map the island is circled instead of pinned, with a line to the inset.
 - Input that isn't a country at all (a typo) costs nothing. Autocomplete and
   voice input work as in Alphabet Mode.
 - The clock pauses while the tab or app is in the background.
@@ -134,10 +139,13 @@ North Macedonia and North Korea under **N**, Eswatini under **E**.
 | `streak.js` | Streak Mode logic: clock, random countries, pin placement and zoom |
 | `countries.js` | The 197 countries with ISO codes and accepted aliases, and the Streak Mode map areas |
 | `map-data.js` | Generated world-map SVG paths (Natural Earth 110m data, Natural Earth projection) |
+| `map-detail.js` | Generated detailed outlines (Natural Earth 10m) of the small island countries, for Streak Mode's close-ups |
+| `tools/make-map-detail.mjs` | Regenerates `map-detail.js` (instructions at the top of the file) |
 | `ios/` | Xcode project for the iOS app |
 
 Map geometry is derived from [Natural Earth](https://www.naturalearthdata.com/)
-(public domain), simplified to 110m resolution and pre-projected to SVG paths.
+(public domain), simplified to 110m resolution (10m for the island
+close-ups) and pre-projected to SVG paths.
 
 ## Planned modes
 

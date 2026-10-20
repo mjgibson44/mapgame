@@ -22,7 +22,7 @@
     areas: $("areas"),
     end: $("endscreen"), endTitle: $("endTitle"), finalScore: $("finalScore"), finalBest: $("finalBest"),
     resultChips: $("resultChips"), playagain: $("playagain"), changeAreas: $("changeAreas"),
-    map: $("map"),
+    map: $("map"), inset: $("inset"),
   };
 
   // ---------- State ----------
@@ -164,7 +164,12 @@
     if (pinCache.has(code)) return pinCache.get(code);
     let pin;
     const dot = MAP_DATA.dots[code];
-    if (dot) {
+    const close = MAP_DETAIL[code];
+    if (close) {
+      // small islands: the pin and zoom come from the close-up's outline
+      const [bx, by, bw] = close.box;
+      pin = { x: close.pin[0], y: close.pin[1], depth: 0, box: { minX: bx, maxX: bx + bw, minY: by, maxY: by + bw } };
+    } else if (dot) {
       pin = { x: dot[0], y: dot[1], depth: 0, box: { minX: dot[0], maxX: dot[0], minY: dot[1], maxY: dot[1] } };
     } else {
       const rings = ringsOf(MAP_DATA.shapes[code].d);
@@ -223,7 +228,43 @@
     '<path class="pin-head" d="M0 0C-1.6 -4.2 -7 -8.4 -7 -13.5A7 7 0 1 1 7 -13.5C7 -8.4 1.6 -4.2 0 0Z"></path>' +
     '<circle class="pin-hole" cy="-13.5" r="2.6"></circle>';
   pinG.style.display = "none";
+
+  // Island countries too small to see at this zoom (see map-detail.js) get
+  // a close-up inset in the map's bottom-right corner, where the country is
+  // shaded darker than its neighbours. On the main map, instead of the pin,
+  // their detailed outline is drawn with a thick stroke so it's always a few
+  // pixels across, and circled, with a line to the inset.
+  function svgEl(tag, cls, parent) {
+    const n = document.createElementNS(SVG_NS, tag);
+    n.setAttribute("class", cls);
+    parent.appendChild(n);
+    return n;
+  }
+  const markG = svgEl("g", "close-mark", el.map);
+  const markShape = svgEl("path", "close-shape", markG);
+  const markLeader = svgEl("line", "close-leader", markG);
+  const markRing = svgEl("circle", "close-ring", markG);
+  const markPulse = svgEl("circle", "pin-pulse", markG);
+  markG.style.display = "none";
+  const insetLand = svgEl("path", "close-land", el.inset);
+  const insetShape = svgEl("path", "close-shape", el.inset);
   el.map.appendChild(pinG);
+  let closeUp = null; // MAP_DETAIL entry of the country in the inset
+
+  function showCloseUp(code) {
+    closeUp = (code && MAP_DETAIL[code]) || null;
+    el.inset.toggleAttribute("hidden", !closeUp); // (no .hidden on SVG elements)
+    markG.style.display = closeUp ? "" : "none";
+    if (!closeUp) return;
+    const [x, y, w] = closeUp.box;
+    el.inset.setAttribute("viewBox", `${x} ${y} ${w} ${w}`);
+    insetLand.setAttribute("d", closeUp.ctx);
+    insetShape.setAttribute("d", closeUp.d);
+    markShape.setAttribute("d", closeUp.d);
+    el.inset.classList.remove("show");
+    void el.inset.getBoundingClientRect(); // restart the fade-in
+    el.inset.classList.add("show");
+  }
 
   // In the app the map grows to fill the screen down to the keyboard (see
   // fitMap), so views are framed to the map's actual shape, not the world's.
@@ -245,8 +286,27 @@
     if (!pinAt) { pinG.style.display = "none"; return; }
     const px = el.map.clientWidth || 800;
     const k = (view.w / px) * (28 / 20);
+    if (closeUp) { placeCloseUp(k); return; }
     pinG.setAttribute("transform", `translate(${pinAt.x} ${pinAt.y}) scale(${k})`);
     pinG.style.display = "";
+  }
+
+  // k: map units per pin unit on the main map. The ring stays 18px across
+  // and its line runs to the inset's left edge (or nearest corner).
+  function placeCloseUp(k) {
+    pinG.style.display = "none";
+    const r = 9 * k;
+    for (const c of [markRing, markPulse]) {
+      c.setAttribute("cx", pinAt.x); c.setAttribute("cy", pinAt.y); c.setAttribute("r", r);
+    }
+    const mr = el.map.getBoundingClientRect(), ir = el.inset.getBoundingClientRect();
+    const u = view.w / (mr.width || 1);
+    const ix = view.x + (ir.left - mr.left) * u, top = view.y + (ir.top - mr.top) * u;
+    const iy = Math.max(top, Math.min(top + ir.height * u, pinAt.y));
+    const len = Math.hypot(ix - pinAt.x, iy - pinAt.y) || 1;
+    markLeader.setAttribute("x1", pinAt.x + ((ix - pinAt.x) * r) / len);
+    markLeader.setAttribute("y1", pinAt.y + ((iy - pinAt.y) * r) / len);
+    markLeader.setAttribute("x2", ix); markLeader.setAttribute("y2", iy);
   }
 
   // What makes a view recognisable is coastline: Rwanda up close is a
@@ -305,8 +365,9 @@
       const w = worldW * Math.sqrt(aspect / mapAspect); // same area as a 2:1 view
       const h = w * mapAspect;
       // centre on the country, keeping the pin clear of the sides and with
-      // headroom above it for the pin graphic
-      let x = clamp(cx - w / 2, pin.x - 0.82 * w, pin.x - 0.18 * w);
+      // headroom above it for the pin graphic — or, for an island with a
+      // close-up, a third of the way across, clear of the inset
+      let x = MAP_DETAIL[code] ? pin.x - 0.3 * w : clamp(cx - w / 2, pin.x - 0.82 * w, pin.x - 0.18 * w);
       let y = clamp(cy - h / 2, pin.y - 0.88 * h, pin.y - 0.3 * h);
       // don't show empty space past the top/bottom of the map unless the pin needs it
       y = clamp(y, Math.min(0, pin.y - 0.3 * h), Math.max(WORLD_H - h, pin.y - 0.88 * h));
@@ -371,6 +432,7 @@
   const nodesOf = (code) => copies.get(code) || [];
   function clearReveals() {
     for (const list of copies.values()) for (const node of list) node.classList.remove("target", ...REVEALS);
+    for (const node of [markShape, insetShape]) node.classList.remove(...REVEALS);
   }
 
   // On the start screen, the whole world with the chosen areas shaded in
@@ -385,6 +447,7 @@
   }
   function reveal(code, kind) {
     for (const node of nodesOf(code)) node.classList.add(`reveal-${kind}`);
+    if (closeUp === MAP_DETAIL[code]) for (const node of [markShape, insetShape]) node.classList.add(`reveal-${kind}`);
   }
   const wrongTimers = new Map();
   function flashWrong(code) {
@@ -458,6 +521,7 @@
     if (which === "start") {
       clearReveals();
       pinAt = null;
+      showCloseUp(null);
       zoomTo({ x: 0, y: 0, w: WORLD_W, h: WORLD_H });
     }
     previewAreas(which === "start");
@@ -485,7 +549,9 @@
     clearReveals();
     run.target = run.deck.pop();
     run.pin = pinSpot(run.target.code);
-    for (const node of nodesOf(run.target.code)) node.classList.add("target");
+    // (an island with a close-up has its detailed outline instead of a dot)
+    if (!MAP_DETAIL[run.target.code]) for (const node of nodesOf(run.target.code)) node.classList.add("target");
+    showCloseUp(run.target.code);
     pinAt = run.pin;
     zoomTo(viewFor(run.target.code, run.pin));
     busy = false;
