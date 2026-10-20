@@ -44,10 +44,12 @@ only), and you type the country it's sitting on.
   where it is), and **Skip** also costs −5s and shows you the answer.
 - **Map areas** — on the start screen, toggle which parts of the world pins
   drop in: **Americas**, **Europe**, **Asia** (Australia included),
-  **Africa** and **Global Islands**. Every country made up entirely of
-  islands is in Global Islands rather than its continent — the UK, Iceland,
-  Japan, Indonesia, Madagascar, Cuba, New Zealand, the Pacific and Caribbean
-  island nations and so on. The map previews your pick, and the choice is
+  **Africa** and **Global Islands**. Global Islands is the 30 island
+  countries small enough to get a close-up (see below) — Malta, the
+  Maldives, Singapore, the small Caribbean and Pacific nations and so on —
+  wherever they are; bigger islands such as the UK, Iceland, Japan, Cuba
+  and Madagascar stay with their continent, and New Zealand, Papua New
+  Guinea, Fiji and the Solomon Islands go with Australia in Asia. The map previews your pick, and the choice is
   remembered. "Change map areas" on the end screen takes you back to it.
 - Your score is how many you name before the clock hits zero; your best is
   saved on the device, separately for each choice of map areas.
