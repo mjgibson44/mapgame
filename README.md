@@ -71,8 +71,9 @@ only), and you type the country it's sitting on.
 
 ## Border Draw
 
-Pick a continent — **Americas**, **Europe**, **Asia** (Australia included)
-or **Africa**, the same areas as Streak Mode — and you get an empty map: its
+Pick a map — a continent (**Americas**, **Europe**, **Asia** with Australia,
+or **Africa**, the same areas as Streak Mode), the **US states**, or
+**Canada**'s provinces and territories — and you get an empty map: its
 coastline with no borders and no names. There are two ways to play, picked
 on the start screen:
 
@@ -99,7 +100,13 @@ them*, until the last country). The only borders you see while playing are
 your own. The row of countries you've drawn lets you reopen one to fix it;
 in *Game names them*, Next then takes you back to where you were.
 
-- **Scoring:** each of the continent's countries scores up to 100 points for
+- **US states and Canada:** the 50 states (DC counts as part of Maryland)
+  and the 10 provinces and 3 territories, with their big lakes drawn as
+  water. The rest of the world is faded. Type names as you'd expect —
+  "Quebec" or "Québec", "PEI", "NWT", "Newfoundland" all work — and you
+  can zoom in further than on the continents, for Rhode Island and Prince
+  Edward Island.
+- **Scoring:** each of the map's countries (or states) scores up to 100 points for
   how well your outline overlaps the real country (intersection over union,
   computed by rasterizing both on a canvas), counting **land only** — loop
   out to sea round the coast and it costs nothing, so it's the land borders
@@ -197,8 +204,10 @@ North Macedonia and North Korea under **N**, Eswatini under **E**.
 | `draw.js` | Border Draw logic: naming and drawing countries (mouse, touch, Apple Pencil), zoom, scoring, save/restore |
 | `countries.js` | The 197 countries with ISO codes and accepted aliases, and the Streak Mode map areas |
 | `map-data.js` | Generated world-map SVG paths (Natural Earth 110m data, Natural Earth projection) |
+| `map-states.js` | Generated outlines (Natural Earth 50m) of the US states and Canada's provinces and territories, and their big lakes, for Border Draw |
 | `map-detail.js` | Generated detailed outlines (Natural Earth 10m) of the small island countries, for Streak Mode's close-ups |
 | `tools/make-map-detail.mjs` | Regenerates `map-detail.js` (instructions at the top of the file) |
+| `tools/make-map-states.mjs` | Regenerates `map-states.js` (instructions at the top of the file) |
 | `ios/` | Xcode project for the iOS app |
 
 Map geometry is derived from [Natural Earth](https://www.naturalearthdata.com/)
