@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MapGame — Border Draw</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="draw-mode">
+<div class="wrap">
+  <header>
+    <span class="letters-progress" id="drawProgress"></span>
+    <span class="total" id="drawScore"></span>
+    <div class="menu" id="menu">
+      <button id="menuBtn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
+      <div class="menu-dropdown" id="menuDropdown" role="menu" hidden>
+        <a href="index.html" role="menuitem">🏠 Home</a>
+        <hr>
+        <div class="menu-label">Mode</div>
+        <a href="alphabet.html" role="menuitemradio" aria-checked="false">🔤 Alphabet</a>
+        <a href="streak.html" role="menuitemradio" aria-checked="false">⏱ Streak</a>
+        <a href="draw.html" role="menuitemradio" aria-checked="true" class="checked">✏️ Border Draw</a>
+        <hr>
+        <button id="soundToggle" role="menuitemcheckbox" aria-checked="true">🔊 Sound: On</button>
+        <button id="resetBtn" role="menuitem">↺ New game</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div>
+      <div class="panel" id="startPanel">
+        <h2 class="panel-title">Border Draw</h2>
+        <p class="rules">
+          Pick a continent. You'll see its coastline with no borders, and one
+          country's name at a time — draw that country where you think it is.
+        </p>
+        <ul class="rules-list">
+          <li>Draw around the country with your finger or mouse</li>
+          <li>Only land counts — the sea is ignored, so it's the <b>borders</b> that matter</li>
+          <li>Up to <b>100 points</b> per country, for how closely your shape matches</li>
+          <li>Pinch or scroll to zoom in on the small ones</li>
+        </ul>
+        <div class="areas-label" id="contLabel">Continent</div>
+        <div class="areas" id="continents" role="radiogroup" aria-labelledby="contLabel"></div>
+        <div class="best-line" id="startBest"></div>
+        <button class="primary" id="startBtn">Start</button>
+      </div>
+
+      <div class="panel" id="gamePanel" hidden>
+        <div class="draw-prompt">
+          <span class="draw-verb" id="drawVerb">Draw</span>
+          <b id="drawName"></b>
+        </div>
+        <div id="feedback" class="info"></div>
+        <div class="actions">
+          <button id="undoBtn" title="Undo the last piece (Ctrl+Z)">Undo</button>
+          <button id="clearBtn">Clear</button>
+          <button id="skipBtn" title="Skip this country (0 points)">Skip</button>
+        </div>
+        <button class="primary" id="doneBtn">Done</button>
+        <div class="hint" id="drawHint">
+          Draw a loop around the country. Islands or separate pieces? Draw more
+          loops. Pinch or scroll to zoom; drag with two fingers, or Shift-drag, to move.
+        </div>
+      </div>
+
+      <div class="panel" id="endscreen" hidden>
+        <h2 id="endTitle">Finished! ✏️</h2>
+        <div class="score" id="finalScore"></div>
+        <div class="pct" id="finalPct"></div>
+        <div class="draw-results" id="results"></div>
+        <button id="playagain">Play again</button>
+        <button class="link" id="changeCont">Change continent</button>
+      </div>
+    </div>
+
+    <div class="mapbox">
+      <div class="mapwrap">
+        <svg id="map" class="borderless" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="Map of the continent without borders, for drawing on"></svg>
+        <div class="zoom" aria-label="Zoom">
+          <button id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+          <button id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+          <button id="zoomFit" title="Show the whole continent" aria-label="Show the whole continent">⤢</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="map-data.js?v=2"></script>
+<script src="countries.js?v=3"></script>
+<script src="shared.js"></script>
+<script src="draw.js"></script>
+</body>
+</html>

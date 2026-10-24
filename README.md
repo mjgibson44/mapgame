@@ -69,6 +69,38 @@ only), and you type the country it's sitting on.
   voice input work as in Alphabet Mode.
 - The clock pauses while the tab or app is in the background.
 
+## Border Draw
+
+Pick a continent — **Americas**, **Europe**, **Asia** (Australia included)
+or **Africa**, the same areas as Streak Mode — and draw every one of its
+countries, one at a time, on a map that shows coastlines but no borders.
+
+- The game names a country; draw a loop around where you think it is, with
+  your finger or the mouse. Countries in more than one piece (the US and
+  Alaska, Indonesia, …) can take several loops. Undo and Clear fix mistakes;
+  **Done** scores it.
+- **Only land counts.** Your shape and the real country are compared on land
+  alone, so a loop that strays out to sea costs nothing — what you're judged
+  on is where you put the land borders. Drawing over a neighbour, or leaving
+  out part of the country, does cost.
+- **Scoring:** up to 100 points per country, from the overlap between your
+  shape and the real one (intersection over union, computed by rasterizing
+  both on a canvas). 90% overlap or better is full marks, with a gentle curve
+  below that. Microstates too small to draw (Andorra, Liechtenstein, Monaco,
+  San Marino, Vatican City) ask you to tap where they are instead: full marks
+  within about 40 km, nothing beyond about 400 km. **Skip** scores 0.
+- After each country its real borders appear and stay on the map, shaded by
+  how well you did (green, yellow, red), so the continent fills in as you go.
+  The end screen lists every country's score, and your best total is saved
+  for each continent.
+- **Zoom** with a pinch, the scroll wheel or the +/− buttons; move the map
+  with two fingers, Shift-drag or a right-button drag. ⤢ shows the whole
+  continent again.
+- The island microstates (Streak Mode's Global Islands) have no land borders
+  to draw, so they aren't part of this mode. Europe's map stops at the Urals,
+  so Russia is drawn up to the map's edge.
+- A game in progress is saved — refresh and you pick up where you left off.
+
 Switch between modes from the ☰ menu.
 
 ## Running it
@@ -135,10 +167,12 @@ North Macedonia and North Korea under **N**, Eswatini under **E**.
 | `index.html` | Home page: pick a mode (`home.js` shows your progress in each) |
 | `alphabet.html` | Alphabet Mode page |
 | `streak.html` | Streak Mode page |
-| `styles.css` | Styles shared by both modes |
-| `shared.js` | Shared by both modes: answer matching, autocomplete, sound, map drawing, voice, menu, the iOS app's keyboard |
+| `draw.html` | Border Draw page |
+| `styles.css` | Styles shared by all the modes |
+| `shared.js` | Shared by all the modes: answer matching, autocomplete, sound, map drawing, voice, menu, the iOS app's keyboard |
 | `app.js` | Alphabet Mode logic: letters, scoring, save/restore |
 | `streak.js` | Streak Mode logic: clock, random countries, pin placement and zoom |
+| `draw.js` | Border Draw logic: drawing, zoom, scoring by overlap, save/restore |
 | `countries.js` | The 197 countries with ISO codes and accepted aliases, and the Streak Mode map areas |
 | `map-data.js` | Generated world-map SVG paths (Natural Earth 110m data, Natural Earth projection) |
 | `map-detail.js` | Generated detailed outlines (Natural Earth 10m) of the small island countries, for Streak Mode's close-ups |
