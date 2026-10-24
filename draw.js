@@ -4,7 +4,8 @@
 
   const RUN_KEY = "mapgame-draw-run";    // the map in progress, so a refresh resumes it
   const CONT_KEY = "mapgame-draw-continent";
-  const BEST_KEY = "mapgame-draw-best";  // + ":" + continent id
+  const BEST_KEY = "mapgame-draw-best";  // + ":" + continent id (+ ":guided")
+  const STYLE_KEY = "mapgame-draw-style"; // "free" (you name each country) or "guided" (the game does)
   const PEN_KEY = "mapgame-draw-pen";    // "1" once a stylus has been used here
   const MAX_ZOOM = 12;                   // how far in you can zoom, relative to the whole continent
   const RASTER = 400;                    // scoring resolution: cells along the longer side
@@ -34,6 +35,7 @@
   const $ = (id) => document.getElementById(id);
   const el = {
     title: $("drawTitle"), score: $("drawScore"),
+    styles: $("styles"), styleHint: $("styleHint"),
     start: $("startPanel"), conts: $("continents"), startBest: $("startBest"), startBtn: $("startBtn"),
     toolbar: $("toolbar"), naming: $("naming"), guess: $("guess"), sug: $("suggestions"),
     now: $("drawingNow"), nowName: $("nowName"), undo: $("undoBtn"), clear: $("clearBtn"), next: $("nextBtn"),
@@ -53,12 +55,24 @@
   } catch (e) {}
   const cont = () => CONTINENTS.find((c) => c.id === contId);
 
-  function bestFor(id) {
-    try { return Number(localStorage.getItem(`${BEST_KEY}:${id}`)) || 0; } catch (e) { return 0; }
+  // Two ways to play: "free" — you name each country you draw, and nothing
+  // says how many are left; "guided" — the game names every country of the
+  // continent in turn. Each keeps its own best score.
+  const STYLES = [
+    { id: "free", label: "You name them", hint: "Type each country you draw. Nothing tells you how many are left — knowing when you've drawn them all is part of the game." },
+    { id: "guided", label: "Game names them", hint: "The game gives you every country of the continent, one at a time, each next to ones you've drawn where it can. Your map is scored when you've done them all." },
+  ];
+  let style = "free";
+  try { if (localStorage.getItem(STYLE_KEY) === "guided") style = "guided"; } catch (e) {}
+
+  const bestKey = (id, guided) => `${BEST_KEY}:${id}${guided ? ":guided" : ""}`;
+  function bestFor(id, guided) {
+    try { return Number(localStorage.getItem(bestKey(id, guided))) || 0; } catch (e) { return 0; }
   }
 
   // run = { cont, order: [codes, as you drew them], drawings: { code: [loop, …] },
-  //         current: code you're drawing or null, result: null | { total, max, scores } }
+  //         current: code you're drawing or null, result: null | { total, max, scores },
+  //         guided: the game names the countries; queue: [codes] it hasn't given you yet }
   // A loop is a closed outline, as [[x, y], …] in map units.
   let run = null;
   let state = "start"; // "start" | "draw" | "result"
@@ -185,15 +199,19 @@
   function updateControls() {
     if (!run || state !== "draw") return;
     const cur = run.current;
-    el.naming.hidden = !!cur;
+    el.naming.hidden = !!cur || !!run.guided;
     el.now.hidden = !cur;
     if (cur) el.nowName.textContent = name(cur);
     el.undo.disabled = !cur || !loopsOf(cur).length;
     el.clear.disabled = el.undo.disabled;
     el.next.disabled = !cur; // with nothing drawn, it just puts the country down
+    // given a country you'd rather not draw, Next skips it
+    el.next.textContent = run.guided && cur && !loopsOf(cur).length ? "Skip ›" : "Next country ›";
     const drawn = drawnCodes();
     el.done.disabled = !drawn.length;
-    el.score.textContent = drawn.length ? `${drawn.length} drawn` : "";
+    const total = cont().codes.length;
+    el.score.textContent = run.guided ? `${total - run.queue.length} of ${total}`
+      : drawn.length ? `${drawn.length} drawn` : "";
 
     // the countries you've drawn so far — tap one to fix it
     el.drawnList.hidden = !run.order.length;
@@ -231,7 +249,10 @@
       wiggle();
       return;
     }
+    if (c.code === run.current) return;
     disarmDone();
+    // guided: reopening an earlier country puts the one you were given back first in line
+    if (run.guided && run.current && !loopsOf(run.current).length) run.queue.unshift(run.current);
     putDown();
     run.current = c.code;
     if (!run.drawings[c.code]) {
@@ -251,11 +272,83 @@
   function nextCountry() {
     if (!run.current) return;
     putDown();
+    if (run.guided) { giveNext(); return; }
     say(`${drawnCodes().length} drawn. Which one next? When you think you've drawn them all, score your map.`);
     save();
     renderInk();
     // on a touch screen, don't pop up the keyboard over the map unasked
     if (!window.matchMedia("(pointer: coarse)").matches) el.guess.focus();
+  }
+
+  // Guided: the order the game gives countries in. It starts on a random
+  // country and walks from neighbour to neighbour — next is one bordering the
+  // latest country given, or else the one before it, and so on — so you work
+  // across the continent rather than jumping around it. Countries count as
+  // neighbours when their outlines come within a fraction of a map unit;
+  // microstates neighbour the country they sit in.
+  function guidedOrder() {
+    const codes = cont().codes;
+    const cellOf = (x, y) => `${Math.floor(x / 0.4)},${Math.floor(y / 0.4)}`;
+    const near = new Map(); // grid cell -> codes with a vertex in it or next to it
+    const re = /([Ml])([^MlZ]*)/g;
+    for (const code of codes) {
+      for (const shape of Object.keys(MAP_DATA.shapes).filter((sh) => (PART_OF[sh] || sh) === code)) {
+        let m, x = 0, y = 0;
+        re.lastIndex = 0;
+        while ((m = re.exec(MAP_DATA.shapes[shape].d))) {
+          const n = m[2].trim().split(/\s+/).map(Number);
+          if (m[1] === "M") [x, y] = n; else { x += n[0]; y += n[1]; }
+          for (const dx of [-0.4, 0, 0.4]) for (const dy of [-0.4, 0, 0.4]) {
+            const k = cellOf(x + dx, y + dy);
+            if (!near.has(k)) near.set(k, new Set());
+            near.get(k).add(code);
+          }
+        }
+      }
+    }
+    const adj = new Map(codes.map((c) => [c, new Set()]));
+    const link = (a, b) => { if (a !== b) { adj.get(a).add(b); adj.get(b).add(a); } };
+    for (const set of near.values()) for (const a of set) for (const b of set) link(a, b);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (const c of codes) {
+      if (!MAP_DATA.dots[c]) continue;
+      const [x, y] = MAP_DATA.dots[c];
+      const host = codes.find((h) => MAP_DATA.shapes[h] && ctx.isPointInPath(pathOf(h), x, y));
+      if (host) link(c, host);
+    }
+    const left = new Set(codes), order = [];
+    const pick = (list) => list[Math.floor(Math.random() * list.length)];
+    while (left.size) {
+      let next = null;
+      for (let k = order.length - 1; k >= 0 && !next; k--) {
+        const n = [...adj.get(order[k])].filter((c) => left.has(c));
+        if (n.length) next = pick(n);
+      }
+      // to start, or after an island: a fresh random country — with
+      // neighbours if any are left, and not a microstate
+      if (!next) {
+        const big = [...left].filter((c) => !MAP_DATA.dots[c]);
+        const joined = big.filter((c) => [...adj.get(c)].some((n) => left.has(n)));
+        next = pick(joined.length ? joined : big.length ? big : [...left]);
+      }
+      order.push(next);
+      left.delete(next);
+    }
+    return order;
+  }
+
+  // Guided: gives you the next country, or scores the map when there are none left.
+  function giveNext() {
+    if (!run.queue.length) {
+      say("That's every country — scoring your map…");
+      setTimeout(() => {
+        run.result = scoreMap();
+        save();
+        showResult(true);
+      }, 30);
+      return;
+    }
+    choose(byCode.get(run.queue.shift()));
   }
 
   function wiggle() {
@@ -581,17 +674,22 @@
 
   function renderHeader() {
     el.title.innerHTML = state === "start" ? "Border Draw" : `Border Draw<small>${cont().name}</small>`;
-    el.score.textContent = state === "result" ? `${run.result.total} / ${run.result.max}`
-      : state === "draw" && drawnCodes().length ? `${drawnCodes().length} drawn` : "";
+    if (state === "result") el.score.textContent = `${run.result.total} / ${run.result.max}`;
+    else if (state === "draw") updateControls(); // it keeps the count up to date
+    else el.score.textContent = "";
   }
 
   function startDrawing(fresh) {
-    if (fresh || !run || run.cont !== contId) run = { cont: contId, order: [], drawings: {}, current: null, result: null };
+    if (fresh || !run || run.cont !== contId) {
+      run = { cont: contId, order: [], drawings: {}, current: null, result: null, guided: style === "guided", queue: null };
+      if (run.guided) run.queue = guidedOrder();
+    }
     save();
     updateHint();
     window.scrollTo(0, 0);
     setState("draw");
     if (run.current) say(`Drawing ${name(run.current)}.`);
+    else if (run.guided) giveNext();
     else say(run.order.length ? `${drawnCodes().length} drawn. Which one next?`
       : "Type the country you're going to draw first, then draw its outline on the map.");
   }
@@ -607,7 +705,7 @@
     if (!drawnCodes().length) return;
     if (!el.done.classList.contains("armed")) {
       el.done.classList.add("armed");
-      el.done.textContent = "Drawn them all? Tap again";
+      el.done.textContent = run.guided && run.queue.length ? "Finish early? Tap again" : "Drawn them all? Tap again";
       armTimer = setTimeout(disarmDone, 4000);
       return;
     }
@@ -624,9 +722,9 @@
 
   function showResult(fresh) {
     const { total, max, scores } = run.result;
-    const prevBest = bestFor(run.cont);
+    const prevBest = bestFor(run.cont, run.guided);
     if (fresh && total > prevBest) {
-      try { localStorage.setItem(`${BEST_KEY}:${run.cont}`, String(total)); } catch (e) {}
+      try { localStorage.setItem(bestKey(run.cont, run.guided), String(total)); } catch (e) {}
     }
     setState("result");
     const pct = Math.round((100 * total) / max);
@@ -699,7 +797,22 @@
       });
       el.conts.appendChild(b);
     }
-    const best = bestFor(contId);
+    el.styles.textContent = "";
+    for (const st of STYLES) {
+      const b = document.createElement("button");
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-pressed", String(st.id === style));
+      b.setAttribute("aria-checked", String(st.id === style));
+      b.textContent = st.label;
+      b.addEventListener("click", () => {
+        style = st.id;
+        try { localStorage.setItem(STYLE_KEY, style); } catch (e) {}
+        renderContinents();
+      });
+      el.styles.appendChild(b);
+    }
+    el.styleHint.textContent = STYLES.find((st) => st.id === style).hint;
+    const best = bestFor(contId, style === "guided");
     el.startBest.textContent = best ? `Your best on ${cont().name}: ${best} points` : "";
   }
 
