@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MapGame — Border Draw</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="draw-mode">
+<div class="wrap">
+  <header>
+    <span class="letters-progress" id="drawTitle">Border Draw</span>
+    <span class="total" id="drawScore"></span>
+    <div class="menu" id="menu">
+      <button id="menuBtn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
+      <div class="menu-dropdown" id="menuDropdown" role="menu" hidden>
+        <a href="index.html" role="menuitem">🏠 Home</a>
+        <hr>
+        <div class="menu-label">Mode</div>
+        <a href="alphabet.html" role="menuitemradio" aria-checked="false">🔤 Alphabet</a>
+        <a href="streak.html" role="menuitemradio" aria-checked="false">⏱ Streak</a>
+        <a href="draw.html" role="menuitemradio" aria-checked="true" class="checked">✏️ Border Draw</a>
+        <hr>
+        <button id="soundToggle" role="menuitemcheckbox" aria-checked="true">🔊 Sound: On</button>
+        <button id="resetBtn" role="menuitem">↺ New map</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="side">
+      <div class="panel" id="startPanel">
+        <h2 class="panel-title">Border Draw</h2>
+        <p class="rules">
+          Pick a continent and you get its coastline — no borders, no names.
+          Say which country you're drawing, draw its outline, then move on to
+          the next. Nothing is checked until you score your map.
+        </p>
+        <ul class="rules-list">
+          <li>Nothing tells you which countries are left — that's up to you</li>
+          <li>Each country scores up to <b>100 points</b> for how closely your outline matches it; ones you leave out score 0</li>
+          <li>Only land counts: loop out to sea around the coast, it's the <b>borders</b> that matter</li>
+          <li>Works with Apple Pencil: the Pencil draws, fingers move and zoom the map</li>
+        </ul>
+        <div class="areas-label" id="contLabel">Continent</div>
+        <div class="areas" id="continents" role="radiogroup" aria-labelledby="contLabel"></div>
+        <div class="best-line" id="startBest"></div>
+        <button class="primary" id="startBtn">Start drawing</button>
+      </div>
+
+      <div class="panel" id="endscreen" hidden>
+        <h2 id="endTitle">Your map ✏️</h2>
+        <div class="score" id="finalScore"></div>
+        <div class="pct" id="finalPct"></div>
+        <label class="check"><input type="checkbox" id="showLines" checked> Show my lines</label>
+        <div id="pickInfo" class="info">Tap a country on the map to see how you did.</div>
+        <div class="draw-results" id="results"></div>
+        <button id="playagain">Draw it again</button>
+        <button class="link" id="changeCont">Change continent</button>
+      </div>
+    </div>
+
+    <div class="mapcol">
+      <div class="toolbar" id="toolbar" hidden>
+        <div class="naming" id="naming">
+          <div class="inputrow">
+            <input id="guess" type="text" autocomplete="off" autocapitalize="words"
+                   spellcheck="false" placeholder="Which country will you draw?" aria-label="Country to draw">
+            <div id="suggestions" role="listbox"></div>
+          </div>
+        </div>
+        <div class="drawing-now" id="drawingNow" hidden>
+          <span class="now-label">Drawing <b id="nowName"></b></span>
+          <button id="undoBtn" title="Undo (Ctrl+Z)">↶ Undo</button>
+          <button id="clearBtn">Clear</button>
+          <button id="nextBtn" class="go" title="Finish this country (Enter)">Next country ›</button>
+        </div>
+        <button class="primary" id="doneBtn">Score my map</button>
+      </div>
+      <div id="feedback" class="info draw-note"></div>
+      <div class="mapbox">
+        <div class="mapwrap">
+          <svg id="map" class="borderless" xmlns="http://www.w3.org/2000/svg" role="img"
+               aria-label="Map of the continent without borders, for drawing on"></svg>
+          <div class="zoom" aria-label="Zoom">
+            <button id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+            <button id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+            <button id="zoomFit" title="Show the whole continent" aria-label="Show the whole continent">⤢</button>
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="drawHint" hidden></div>
+      <div class="drawn-list" id="drawnList" hidden></div>
+    </div>
+  </div>
+</div>
+
+<script src="map-data.js?v=2"></script>
+<script src="countries.js?v=3"></script>
+<script src="shared.js"></script>
+<script src="draw.js?v=3"></script>
+</body>
+</html>

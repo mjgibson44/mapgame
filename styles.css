@@ -19,6 +19,9 @@
   --kb-bg: #e2e1dc;        /* in-app keyboard: tray, letter keys, ⌫/return */
   --kb-key: #ffffff;
   --kb-special: #c4c3bb;
+  --pts-hi: #a6d7b0;       /* border draw: countries by how well you drew them */
+  --pts-mid: #efd88f;
+  --pts-lo: #eeaca4;
   --display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
 }
 @media (prefers-color-scheme: dark) {
@@ -42,6 +45,9 @@
     --kb-bg: #232321;
     --kb-key: #57564f;
     --kb-special: #383834;
+    --pts-hi: #2f6b40;
+    --pts-mid: #7a6526;
+    --pts-lo: #7d3530;
   }
 }
 :root[data-theme="dark"] {
@@ -51,6 +57,7 @@
   --map-bg: #151513; --map-land: #1c1c1a; --map-stroke: #9b9a90; --map-guessed: #ecebe3;
   --map-solid: #4a4943; --map-on: #8b8a81; --map-off: #353531;
   --kb-bg: #232321; --kb-key: #57564f; --kb-special: #383834;
+  --pts-hi: #2f6b40; --pts-mid: #7a6526; --pts-lo: #7d3530;
 }
 :root[data-theme="light"] {
   --ink: #111; --ink-soft: #444; --ink-faint: #888; --on-ink: #fff;
@@ -59,6 +66,7 @@
   --map-bg: #efefec; --map-land: #ffffff; --map-stroke: #555; --map-guessed: #1c1c1c;
   --map-solid: #cfcec7; --map-on: #9e9d95; --map-off: #dddcd6;
   --kb-bg: #e2e1dc; --kb-key: #ffffff; --kb-special: #c4c3bb;
+  --pts-hi: #a6d7b0; --pts-mid: #efd88f; --pts-lo: #eeaca4;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; }
@@ -346,6 +354,93 @@ button.link {
 .hint { margin-top: 14px; font-size: 12.5px; color: var(--ink-faint); line-height: 1.5; }
 [hidden] { display: none !important; }
 
+/* ---------- Border Draw ---------- */
+/* while drawing, the map takes the whole width under a toolbar */
+.draw-mode.drawing .layout { grid-template-columns: 1fr; }
+.draw-mode.drawing .side { display: none; }
+.draw-mode.drawing .wrap { padding-bottom: 12px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.toolbar .naming { flex: 1 1 260px; max-width: 460px; }
+.toolbar .naming .inputrow { margin-top: 0; }
+.draw-mode #suggestions { right: 0; }
+.toolbar .drawing-now { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.now-label { font-size: 15px; color: var(--ink-soft); margin-right: 4px; }
+.now-label b { font-family: var(--display); font-size: 22px; color: var(--ink); }
+.toolbar button.go { border-color: var(--ink); font-weight: 600; }
+.draw-mode #feedback.draw-note { margin: 6px 0 8px; min-height: 20px; }
+.drawn-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.drawn-list button {
+  font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink-soft);
+}
+.drawn-list button.current { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.toolbar button {
+  font-size: 15px; padding: 9px 14px; border-radius: 10px;
+  border: 1.5px solid var(--ink-soft); background: var(--card); color: var(--ink);
+}
+.toolbar button:disabled { opacity: 0.4; cursor: default; }
+.toolbar button.primary {
+  width: auto; margin-left: auto; padding: 9px 20px; font-size: 15px; border: none;
+  background: var(--ink); color: var(--on-ink);
+}
+.toolbar button.primary.armed { background: var(--good); }
+.draw-mode .mapcol > .hint { margin-top: 8px; }
+.draw-mode #map { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.draw-mode.drawing #map { cursor: crosshair; }
+.draw-mode #map.borderless .land.area-off { fill: var(--map-off); stroke: var(--map-off); }
+/* the result: real borders, each country shaded by its score */
+.draw-mode #map .land.pts-hi, .draw-mode #map .land.pts-mid, .draw-mode #map .land.pts-lo,
+.draw-mode #map .dot.pts-hi, .draw-mode #map .dot.pts-mid, .draw-mode #map .dot.pts-lo {
+  stroke: var(--map-stroke); stroke-width: 1px; vector-effect: non-scaling-stroke;
+}
+.draw-mode #map .pts-hi { fill: var(--pts-hi); }
+.draw-mode #map .pts-mid { fill: var(--pts-mid); }
+.draw-mode #map .pts-lo { fill: var(--pts-lo); }
+.draw-mode #map .dot.pts-hi, .draw-mode #map .dot.pts-mid, .draw-mode #map .dot.pts-lo { display: inline; }
+.draw-mode #map .land.picked { stroke: var(--ink); stroke-width: 3px; }
+.draw-mode #map .ink { pointer-events: none; }
+.draw-mode #map .ink.faded { display: none; }
+/* your outlines: the country you're drawing now stands out */
+.draw-mode #map .ink .loop, .draw-mode #map .ink .stroke {
+  fill: var(--ink); fill-opacity: 0.08; stroke: var(--ink-soft); stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round;
+}
+.draw-mode #map .ink .stroke { fill: none; stroke: var(--ink); stroke-width: 2px; }
+.draw-mode #map .ink .current .loop { fill-opacity: 0.22; stroke: var(--ink); stroke-width: 2px; }
+.draw-mode #map .ink.result .loop { fill: none; stroke: var(--ink); stroke-width: 1.5px; stroke-dasharray: 4 3; }
+.draw-mode #map .ink.result .picked .loop { stroke-width: 2.5px; }
+.zoom { position: absolute; top: 8px; right: 8px; display: grid; gap: 4px; }
+.zoom button {
+  width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--ink); font-size: 18px; line-height: 1; opacity: 0.92;
+}
+.zoom button:hover { border-color: var(--ink-soft); }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-soft); margin-bottom: 4px; }
+.draw-mode #endscreen #feedback { min-height: 40px; }
+.draw-results {
+  text-align: left; max-height: 300px; overflow-y: auto; margin: 4px 0 6px;
+  border-top: 1px solid var(--line); padding-top: 6px; font-size: 14px;
+}
+.draw-results button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 4px; border: none;
+  border-radius: 6px; background: none; color: var(--ink); font-size: 14px; text-align: left;
+}
+.draw-results button:hover { background: var(--line); }
+.draw-results button::before { content: ""; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; border: 1px solid var(--map-stroke); }
+.draw-results button.pts-hi::before { background: var(--pts-hi); }
+.draw-results button.pts-mid::before { background: var(--pts-mid); }
+.draw-results button.pts-lo::before { background: var(--pts-lo); }
+.draw-results span { flex: 1; }
+.draw-results b { font-variant-numeric: tabular-nums; }
+.draw-results .missed b { color: var(--bad); font-weight: 400; }
+@media (max-width: 600px) {
+  .toolbar { gap: 6px; }
+  .toolbar button { padding: 9px 10px; font-size: 14px; }
+  .toolbar button.primary { flex: 1 0 100%; margin-left: 0; padding: 11px; }
+  .toolbar .naming { max-width: none; }
+  .now-label { flex: 1 0 100%; }
+}
+
 /* ---------- Home ---------- */
 .home .wrap { max-width: 560px; padding-top: 48px; }
 .home-head h1 { font-family: var(--display); font-size: 44px; margin: 0; letter-spacing: 0.3px; }
@@ -444,5 +539,5 @@ html { scroll-padding-bottom: var(--kb-h, 0px); }
   .clock { font-size: 26px; }
 }
 @media (max-width: 950px) {
-  .streak-mode .mapbox { order: -1; }
+  .streak-mode .mapbox, .draw-mode .mapbox { order: -1; }
 }
