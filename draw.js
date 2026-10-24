@@ -7,28 +7,50 @@
   const BEST_KEY = "mapgame-draw-best";  // + ":" + continent id (+ ":guided")
   const STYLE_KEY = "mapgame-draw-style"; // "free" (you name each country) or "guided" (the game does)
   const PEN_KEY = "mapgame-draw-pen";    // "1" once a stylus has been used here
-  const MAX_ZOOM = 12;                   // how far in you can zoom, relative to the whole continent
   const RASTER = 400;                    // scoring resolution: cells along the longer side
 
   const { lookup, sound } = MapGame;
 
-  // The four continents, from the Streak Mode map areas (Asia includes
-  // Australia), each with the part of the map to show: Russia is cut off east
-  // of the Urals, and France's overseas territories fall outside Europe.
-  // The island microstates (Streak's Global Islands) aren't part of this
-  // mode; they're shown faded, like the other continents.
+  // The maps you can draw. The four continents come from the Streak Mode
+  // map areas (Asia includes Australia), each with the part of the world to
+  // show: Russia is cut off east of the Urals, and France's overseas
+  // territories fall outside Europe. The island microstates (Streak's Global
+  // Islands) aren't part of this mode; they're shown faded, like the other
+  // continents. Then the US states and Canada's provinces and territories
+  // (map-states.js), drawn over their country with the rest of the world
+  // faded; small states get more zoom.
   const VIEWS = {
     americas: { x: 55, y: 0, w: 355, h: 440 },
     europe:   { x: 438, y: 2, w: 226, h: 144 },
     asia:     { x: 560, y: 70, w: 440, h: 342 },
     africa:   { x: 440, y: 128, w: 215, h: 248 },
   };
-  const CONTINENTS = REGIONS.filter((r) => VIEWS[r.id]).map((r) => ({ ...r, box: VIEWS[r.id] }));
-  const byCode = new Map(COUNTRIES.map((c) => [c.code, c]));
+  const boxOf = ([x, y, w, h]) => ({ x, y, w, h });
+  const statesOf = (country) => Object.keys(MAP_STATES.shapes).filter((c) => c.startsWith(`${country}-`));
+  const MAPS = [
+    ...REGIONS.filter((r) => VIEWS[r.id]).map((r) => ({ ...r, box: VIEWS[r.id], maxZoom: 12, one: "country", many: "countries" })),
+    { id: "us", name: "US states", host: "US", codes: statesOf("US"), box: boxOf(MAP_STATES.boxes.US),
+      maxZoom: 30, one: "state", many: "states" },
+    { id: "canada", name: "Canada", host: "CA", codes: statesOf("CA"), box: boxOf(MAP_STATES.boxes.CA),
+      maxZoom: 20, one: "province or territory", many: "provinces and territories" },
+  ];
+
+  // Every place you can draw — the 197 countries and the states and
+  // provinces (coded "US-NY", "CA-ON") — and every outline on the map.
+  const STATE_ALIASES = {
+    "US-WA": ["Washington State"], "CA-NL": ["Newfoundland", "Labrador"], "CA-PE": ["PEI"],
+    "CA-NT": ["NWT", "Northwest Territory"], "CA-YT": ["Yukon Territory"], "CA-BC": ["BC"],
+  };
+  const PLACES = new Map(COUNTRIES.map((c) => [c.code, c]));
+  for (const [code, { n }] of Object.entries(MAP_STATES.shapes)) {
+    PLACES.set(code, { code, name: n.replace("Québec", "Quebec"), aliases: STATE_ALIASES[code] });
+  }
+  const SHAPES = { ...MAP_DATA.shapes, ...MAP_STATES.shapes };
   // Map shapes that are part of a country: the map draws Somaliland apart from Somalia.
   const PART_OF = { SOL: "SO" };
-  const regionOf = new Map(REGIONS.flatMap((r) => r.codes.map((code) => [code, r.id])));
-  const contOf = (code) => regionOf.get(PART_OF[code] || code);
+  const placeOf = (shape) => PART_OF[shape] || shape;
+  const mapOf = new Map(MAPS.flatMap((m) => m.codes.map((code) => [code, m.id])));
+  const inMap = (code) => mapOf.get(placeOf(code)) === contId;
 
   // ---------- DOM ----------
 
@@ -48,19 +70,19 @@
 
   // ---------- State ----------
 
-  let contId = CONTINENTS[0].id;
+  let contId = MAPS[0].id;
   try {
     const saved = localStorage.getItem(CONT_KEY);
-    if (CONTINENTS.some((c) => c.id === saved)) contId = saved;
+    if (MAPS.some((c) => c.id === saved)) contId = saved;
   } catch (e) {}
-  const cont = () => CONTINENTS.find((c) => c.id === contId);
+  const cont = () => MAPS.find((c) => c.id === contId);
 
   // Two ways to play: "free" — you name each country you draw, and nothing
   // says how many are left; "guided" — the game names every country of the
   // continent in turn. Each keeps its own best score.
   const STYLES = [
-    { id: "free", label: "You name them", hint: "Type each country you draw. Nothing tells you how many are left — knowing when you've drawn them all is part of the game." },
-    { id: "guided", label: "Game names them", hint: "The game gives you every country of the continent, one at a time, each next to ones you've drawn where it can. Your map is scored when you've done them all." },
+    { id: "free", label: "You name them", hint: "Type each one you draw. Nothing tells you how many are left — knowing when you've drawn them all is part of the game." },
+    { id: "guided", label: "Game names them", hint: "The game gives you every country (or state, or province) on the map, one at a time, each next to ones you've drawn where it can. Your map is scored when you've done them all." },
   ];
   let style = "free";
   try { if (localStorage.getItem(STYLE_KEY) === "guided") style = "guided"; } catch (e) {}
@@ -86,7 +108,8 @@
     } catch (e) {}
   }
 
-  const name = (code) => byCode.get(code).name;
+  const name = (code) => PLACES.get(code).name;
+  const nextLabel = () => (cont().host ? "Next" : "Next country");
   const loopsOf = (code) => run.drawings[code] || [];
   const drawnCodes = () => run.order.filter((c) => loopsOf(c).length);
 
@@ -94,6 +117,22 @@
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const mapNodes = MapGame.buildMap(el.map);
+  // the states and provinces, above the countries (they're shown only on their own maps)
+  {
+    const firstDot = el.map.querySelector(".dot");
+    for (const [code, { d }] of Object.entries(MAP_STATES.shapes)) {
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", d);
+      p.setAttribute("data-code", code);
+      el.map.insertBefore(p, firstDot);
+      mapNodes.set(code, p);
+    }
+  }
+  // their big lakes, as water over them (the states' outlines run out into the lakes)
+  const lakes = document.createElementNS(SVG_NS, "path");
+  lakes.setAttribute("d", MAP_STATES.lakes);
+  lakes.setAttribute("class", "lakes");
+  el.map.insertBefore(lakes, el.map.querySelector(".dot"));
   const ink = document.createElementNS(SVG_NS, "g"); // your outlines, above the land
   ink.setAttribute("class", "ink");
   el.map.appendChild(ink);
@@ -137,10 +176,10 @@
   }
   window.addEventListener("resize", () => requestAnimationFrame(layoutMap));
 
-  // Zoom in no further than MAX_ZOOM, out no further than the whole
-  // continent, and keep the view over it.
+  // Zoom in no further than the map's maxZoom, out no further than the whole
+  // map, and keep the view over it.
   function clampView(v) {
-    const w = Math.min(fitView.w, Math.max(fitView.w / MAX_ZOOM, v.w));
+    const w = Math.min(fitView.w, Math.max(fitView.w / cont().maxZoom, v.w));
     const h = (w * fitView.h) / fitView.w;
     const x = Math.min(fitView.x + fitView.w - w, Math.max(fitView.x, v.x));
     const y = Math.min(fitView.y + fitView.h - h, Math.max(fitView.y, v.y));
@@ -158,14 +197,18 @@
     return [view.x + ((clientX - r.left) / r.width) * view.w, view.y + ((clientY - r.top) / r.height) * view.h];
   }
 
-  // While you draw, the continent is one plain landmass and everything else
-  // (other continents, Western Sahara, the island microstates) is faded. On
-  // the result, the continent's countries get their real borders, shaded by
-  // score.
+  // While you draw, the map's land is one plain landmass and everything else
+  // (other continents, Western Sahara, the island microstates; for states,
+  // the rest of the world) is faded. On the result, the map's countries or
+  // states get their real borders, shaded by score.
   function paintMap() {
+    const host = cont().host;
+    lakes.classList.toggle("off-map", !host);
     for (const [code, node] of mapNodes) {
       node.setAttribute("class", node.tagName === "circle" ? "dot" : "land");
-      if (contOf(code) !== contId) { node.classList.add("area-off"); continue; }
+      // states only on their own map, and their country hidden under them
+      if (code.includes("-") ? !inMap(code) : code === host) { node.classList.add("off-map"); continue; }
+      if (!inMap(code)) { node.classList.add("area-off"); continue; }
       if (state !== "result") continue;
       const s = run.result.scores[PART_OF[code] || code];
       node.classList.add(s.pts >= 75 ? "pts-hi" : s.pts >= 40 ? "pts-mid" : "pts-lo");
@@ -206,7 +249,7 @@
     el.clear.disabled = el.undo.disabled;
     el.next.disabled = !cur; // with nothing drawn, it just puts the country down
     // given a country you'd rather not draw, Next skips it
-    el.next.textContent = run.guided && cur && !loopsOf(cur).length ? "Skip ›" : "Next country ›";
+    el.next.textContent = run.guided && cur && !loopsOf(cur).length ? "Skip ›" : `${nextLabel()} ›`;
     const drawn = drawnCodes();
     el.done.disabled = !drawn.length;
     const total = cont().codes.length;
@@ -220,7 +263,7 @@
       const b = document.createElement("button");
       b.textContent = name(code);
       if (code === cur) b.className = "current";
-      b.addEventListener("click", () => choose(byCode.get(code)));
+      b.addEventListener("click", () => choose(PLACES.get(code)));
       el.drawnList.appendChild(b);
     }
   }
@@ -243,8 +286,8 @@
   }
 
   function choose(c) {
-    if (contOf(c.code) !== contId) {
-      say(`${c.name} isn't part of ${cont().name} on this map.`, "err");
+    if (!inMap(c.code)) {
+      say(cont().host ? `${c.name} isn't one of the ${cont().many} on this map.` : `${c.name} isn't part of ${cont().name} on this map.`, "err");
       sound("nomatch");
       wiggle();
       return;
@@ -258,7 +301,7 @@
     if (!run.drawings[c.code]) {
       run.drawings[c.code] = [];
       run.order.push(c.code);
-      say(`Draw ${c.name}: loop around it. In pieces? Draw a loop for each. Then “Next country”.`);
+      say(`Draw ${c.name}: loop around it. In pieces? Draw a loop for each. Then “${nextLabel()}”.`);
     } else {
       say(`Fixing ${c.name}: add loops, or Clear to start it again.`);
     }
@@ -292,10 +335,10 @@
     const near = new Map(); // grid cell -> codes with a vertex in it or next to it
     const re = /([Ml])([^MlZ]*)/g;
     for (const code of codes) {
-      for (const shape of Object.keys(MAP_DATA.shapes).filter((sh) => (PART_OF[sh] || sh) === code)) {
+      for (const shape of shapesOf(code)) {
         let m, x = 0, y = 0;
         re.lastIndex = 0;
-        while ((m = re.exec(MAP_DATA.shapes[shape].d))) {
+        while ((m = re.exec(SHAPES[shape].d))) {
           const n = m[2].trim().split(/\s+/).map(Number);
           if (m[1] === "M") [x, y] = n; else { x += n[0]; y += n[1]; }
           for (const dx of [-0.4, 0, 0.4]) for (const dy of [-0.4, 0, 0.4]) {
@@ -313,7 +356,7 @@
     for (const c of codes) {
       if (!MAP_DATA.dots[c]) continue;
       const [x, y] = MAP_DATA.dots[c];
-      const host = codes.find((h) => MAP_DATA.shapes[h] && ctx.isPointInPath(pathOf(h), x, y));
+      const host = codes.find((h) => SHAPES[h] && ctx.isPointInPath(pathOf(h), x, y));
       if (host) link(c, host);
     }
     const left = new Set(codes), order = [];
@@ -340,7 +383,7 @@
   // Guided: gives you the next country, or scores the map when there are none left.
   function giveNext() {
     if (!run.queue.length) {
-      say("That's every country — scoring your map…");
+      say(`That's every one of the ${cont().many} — scoring your map…`);
       setTimeout(() => {
         run.result = scoreMap();
         save();
@@ -348,7 +391,7 @@
       }, 30);
       return;
     }
-    choose(byCode.get(run.queue.shift()));
+    choose(PLACES.get(run.queue.shift()));
   }
 
   function wiggle() {
@@ -358,8 +401,15 @@
   }
 
   // Autocomplete: one suggestion at a time, after 3 letters, from all 197
-  // countries — limiting it to the continent would give the answers away.
+  // countries — limiting it to the continent would give the answers away. On
+  // a states map, from that map's states (there's no secret in which they are).
   let sug = null;
+  const candidates = () => (cont().host ? cont().codes.map((c) => PLACES.get(c)) : COUNTRIES);
+  const lookupName = (text) => {
+    const n = MapGame.normalize(text);
+    if (!cont().host) return lookup.get(n);
+    return candidates().find((c) => [c.name, ...(c.aliases || [])].some((f) => MapGame.normalize(f) === n));
+  };
   function renderSuggestions() {
     el.sug.innerHTML = "";
     if (!sug) { el.sug.classList.remove("open"); return; }
@@ -382,17 +432,17 @@
     el.sug.innerHTML = "";
   }
   el.guess.addEventListener("input", () => {
-    sug = MapGame.suggest(el.guess.value, COUNTRIES);
+    sug = MapGame.suggest(el.guess.value, candidates());
     renderSuggestions();
   });
   el.guess.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      const c = sug ? sug.c : lookup.get(MapGame.normalize(el.guess.value));
+      const c = sug ? sug.c : lookupName(el.guess.value);
       if (c) choose(c);
       else if (el.guess.value.trim()) {
         sound("nomatch");
-        say(`“${el.guess.value.trim()}” isn't a country we recognize.`);
+        say(`“${el.guess.value.trim()}” isn't a ${cont().host ? cont().one : "country"} we recognize.`);
         wiggle();
       }
     } else if (e.key === "Escape") {
@@ -510,7 +560,7 @@
     } else if (g.tap && !cancelled && state === "result") {
       pickAt(e.clientX, e.clientY); // a tap on the result: which country is that?
     } else if (g.tap && !cancelled && state === "draw" && !run.current) {
-      say("First type which country you're drawing.");
+      say(`First type which ${cont().one} you're drawing.`);
       wiggle();
     }
   }
@@ -546,17 +596,17 @@
   // over a neighbour, or missing part of the country, does.
   const pathCache = new Map();
   const pathOf = (shape) => {
-    if (!pathCache.has(shape)) pathCache.set(shape, new Path2D(MAP_DATA.shapes[shape].d));
+    if (!pathCache.has(shape)) pathCache.set(shape, new Path2D(SHAPES[shape].d));
     return pathCache.get(shape);
   };
-  const shapesOf = (code) => Object.keys(MAP_DATA.shapes).filter((s) => (PART_OF[s] || s) === code);
+  const shapesOf = (code) => Object.keys(SHAPES).filter((s) => placeOf(s) === code);
   const boxCache = new Map();
   function shapeBox(shape) {
     if (boxCache.has(shape)) return boxCache.get(shape);
     // paths are "M x y", then relative "l dx dy" segments, then "Z"
     const re = /([Ml])([^MlZ]*)/g;
     let m, x = 0, y = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    while ((m = re.exec(MAP_DATA.shapes[shape].d))) {
+    while ((m = re.exec(SHAPES[shape].d))) {
       const n = m[2].trim().split(/\s+/).map(Number);
       if (m[1] === "M") [x, y] = n;
       else { x += n[0]; y += n[1]; }
@@ -567,6 +617,7 @@
     return b;
   }
 
+  const lakesPath = new Path2D(MAP_STATES.lakes);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
@@ -587,22 +638,32 @@
     const W = Math.max(1, Math.ceil((maxX - minX) * scale)), H = Math.max(1, Math.ceil((maxY - minY) * scale));
     canvas.width = W; canvas.height = H;
 
-    function layer(paint) {
+    // on a states map, the lakes are cut out of the land and the states
+    function layer(paint, dry) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, W, H);
       ctx.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale);
       ctx.fillStyle = "#000";
       paint();
+      if (dry && cont().host) {
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fill(lakesPath, "evenodd");
+        ctx.globalCompositeOperation = "source-over";
+      }
       return ctx.getImageData(0, 0, W, H).data;
     }
+    // land: the world's countries — on a states map, its states in place
+    // of their country (whose coast is drawn differently)
+    const host = cont().host;
+    const landShapes = [...Object.keys(MAP_DATA.shapes).filter((s) => s !== host), ...(host ? cont().codes : [])];
     const land = layer(() => {
-      for (const s of Object.keys(MAP_DATA.shapes)) {
+      for (const s of landShapes) {
         const b = shapeBox(s);
         if (b.maxX >= minX && b.minX <= maxX && b.maxY >= minY && b.minY <= maxY) ctx.fill(pathOf(s));
       }
-    });
+    }, true);
     // evenodd: holes such as Lesotho stay out
-    const truth = layer(() => { for (const s of shapesOf(code)) ctx.fill(pathOf(s), "evenodd"); });
+    const truth = layer(() => { for (const s of shapesOf(code)) ctx.fill(pathOf(s), "evenodd"); }, true);
     const drawn = layer(() => {
       for (const loop of loops) {
         ctx.beginPath();
@@ -656,6 +717,7 @@
 
   function setState(s) {
     state = s;
+    el.guess.placeholder = `Which ${cont().host ? cont().one.split(" ")[0] : "country"} will you draw?`;
     document.body.classList.toggle("drawing", s === "draw");
     el.start.hidden = s !== "start";
     el.end.hidden = s !== "result";
@@ -691,7 +753,7 @@
     if (run.current) say(`Drawing ${name(run.current)}.`);
     else if (run.guided) giveNext();
     else say(run.order.length ? `${drawnCodes().length} drawn. Which one next?`
-      : "Type the country you're going to draw first, then draw its outline on the map.");
+      : `Type the ${cont().host ? cont().one : "country"} you're going to draw first, then draw its outline on the map.`);
   }
 
   // Scoring can't be undone, so "Score my map" asks for a second tap.
@@ -730,10 +792,10 @@
     const pct = Math.round((100 * total) / max);
     const n = Object.keys(scores).length, drawn = Object.values(scores).filter((s) => s.drawn).length;
     el.finalScore.textContent = `${pct}%`;
-    el.finalPct.textContent = `${total} of ${max} points · you drew ${drawn} of ${n} countries` +
+    el.finalPct.textContent = `${total} of ${max} points · you drew ${drawn} of ${n} ${cont().many}` +
       (fresh && total > prevBest && prevBest ? " — a new best!" : prevBest ? ` · Your best: ${Math.max(prevBest, total)}` : "");
     el.pickInfo.className = "info";
-    el.pickInfo.textContent = "Tap a country on the map to see how you did.";
+    el.pickInfo.textContent = `Tap a ${cont().host ? cont().one.split(" ")[0] : "country"} on the map to see how you did.`;
 
     el.results.textContent = "";
     const list = Object.entries(scores).sort((a, b) => b[1].pts - a[1].pts || name(a[0]).localeCompare(name(b[0])));
@@ -753,15 +815,15 @@
     const hit = document.elementFromPoint(x, y);
     const node = hit && hit.closest && hit.closest("[data-code]");
     const code = node && node.getAttribute("data-code");
-    if (code && contOf(code) === contId) pick(PART_OF[code] || code);
+    if (code && inMap(code)) pick(placeOf(code));
   }
 
   // Highlights a country on the result, with your outline for it.
   function pick(code) {
     for (const node of el.map.querySelectorAll(".picked")) node.classList.remove("picked");
-    for (const [c, node] of mapNodes) if ((PART_OF[c] || c) === code) {
+    for (const [c, node] of mapNodes) if (placeOf(c) === code) {
       node.classList.add("picked");
-      node.parentNode.insertBefore(node, ink); // on top, so its whole outline shows
+      node.parentNode.insertBefore(node, lakes); // on top, so its whole outline shows
     }
     const mine = ink.querySelector(`[data-for="${code}"]`);
     if (mine) mine.classList.add("picked");
@@ -781,7 +843,7 @@
 
   function renderContinents() {
     el.conts.textContent = "";
-    for (const c of CONTINENTS) {
+    for (const c of MAPS) {
       const b = document.createElement("button");
       b.setAttribute("role", "radio");
       b.setAttribute("aria-pressed", String(c.id === contId));
@@ -848,8 +910,8 @@
   // Resume a saved map (drawing or scored), or show the start screen.
   try {
     const saved = JSON.parse(localStorage.getItem(RUN_KEY) || "null");
-    if (saved && VIEWS[saved.cont] && Array.isArray(saved.order) && saved.drawings &&
-        saved.order.every((c) => byCode.has(c))) {
+    if (saved && MAPS.some((m) => m.id === saved.cont) && Array.isArray(saved.order) && saved.drawings &&
+        saved.order.every((c) => PLACES.has(c))) {
       run = saved;
       contId = saved.cont;
     }
