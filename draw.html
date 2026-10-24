@@ -33,30 +33,26 @@
         <h2 class="panel-title">Border Draw</h2>
         <p class="rules">
           Pick a continent and you get its coastline — no borders, no names.
-          Country by country, draw the borders each one still needs, then tap
-          inside it to fill it. Nothing is checked until you score your map.
+          Say which country you're drawing, draw its outline, then move on to
+          the next. Nothing is checked until you score your map.
         </p>
         <ul class="rules-list">
-          <li>The coast and countries you've already drawn count as borders — only draw the <b>new</b> ones</li>
-          <li>Each country scores up to <b>100 points</b> for how closely your area matches it; ones you leave out score 0</li>
+          <li>Nothing tells you which countries are left — that's up to you</li>
+          <li>Each country scores up to <b>100 points</b> for how closely your outline matches it; ones you leave out score 0</li>
+          <li>Only land counts: loop out to sea around the coast, it's the <b>borders</b> that matter</li>
           <li>Works with Apple Pencil: the Pencil draws, fingers move and zoom the map</li>
         </ul>
         <div class="areas-label" id="contLabel">Continent</div>
         <div class="areas" id="continents" role="radiogroup" aria-labelledby="contLabel"></div>
-        <div class="areas-label" id="styleLabel">How to play</div>
-        <div class="areas" id="styles" role="radiogroup" aria-labelledby="styleLabel"></div>
-        <div class="best-line" id="styleHint"></div>
         <div class="best-line" id="startBest"></div>
         <button class="primary" id="startBtn">Start drawing</button>
-        <div class="past" id="pastMaps"></div>
       </div>
 
       <div class="panel" id="endscreen" hidden>
         <h2 id="endTitle">Your map ✏️</h2>
         <div class="score" id="finalScore"></div>
         <div class="pct" id="finalPct"></div>
-        <div class="trend" id="trend"></div>
-        <label class="check"><input type="checkbox" id="showLines" checked> Show my borders</label>
+        <label class="check"><input type="checkbox" id="showLines" checked> Show my lines</label>
         <div id="pickInfo" class="info">Tap a country on the map to see how you did.</div>
         <div class="draw-results" id="results"></div>
         <button id="playagain">Draw it again</button>
@@ -102,6 +98,6 @@
 <script src="map-data.js?v=2"></script>
 <script src="countries.js?v=3"></script>
 <script src="shared.js"></script>
-<script src="draw.js?v=4"></script>
+<script src="draw.js?v=3"></script>
 </body>
 </html>
