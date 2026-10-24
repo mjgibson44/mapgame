@@ -400,15 +400,15 @@ button.link {
 .draw-mode #map .land.picked { stroke: var(--ink); stroke-width: 3px; }
 .draw-mode #map .ink { pointer-events: none; }
 .draw-mode #map .ink.faded { display: none; }
-/* your outlines: the country you're drawing now stands out */
-.draw-mode #map .ink .loop, .draw-mode #map .ink .stroke {
-  fill: var(--ink); fill-opacity: 0.08; stroke: var(--ink-soft); stroke-width: 1.5px;
+/* your countries (an image of the fill grid) and the lines you're drawing */
+.draw-mode #map .fills { pointer-events: none; }
+.draw-mode #map .fills.faded { display: none; }
+.draw-mode #map .ink .line {
+  fill: none; stroke: var(--ink); stroke-width: 2px;
   vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round;
 }
-.draw-mode #map .ink .stroke { fill: none; stroke: var(--ink); stroke-width: 2px; }
-.draw-mode #map .ink .current .loop { fill-opacity: 0.22; stroke: var(--ink); stroke-width: 2px; }
-.draw-mode #map .ink.result .loop { fill: none; stroke: var(--ink); stroke-width: 1.5px; stroke-dasharray: 4 3; }
-.draw-mode #map .ink.result .picked .loop { stroke-width: 2.5px; }
+.draw-mode #map .ink .tap { fill: var(--ink-soft); stroke: var(--card); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.draw-mode #map .ink .tap.current { fill: var(--bad); }
 .zoom { position: absolute; top: 8px; right: 8px; display: grid; gap: 4px; }
 .zoom button {
   width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 8px;

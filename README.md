@@ -78,9 +78,20 @@ coastline with no borders and no names. Then, one country at a time:
 1. **Say which country you'll draw** — type it (3 letters bring up one
    suggestion, from all 197 countries so it doesn't give away which are on
    the map).
-2. **Draw its outline** — a loop around it. Countries in pieces (the US and
-   Alaska, Indonesia, …) take a loop per piece. Undo and Clear fix mistakes.
-3. **Next country** — your outline stays on the map, and you pick the next.
+2. **Draw the borders it still needs** — only the new ones. The coast, the
+   faded land of other continents and every country you've already filled
+   already count as borders, so for a coastal country a line from one point
+   on the coast to another is enough, and next to a country you've drawn you
+   only draw the part that isn't there yet. A line that ends just short of
+   the coast or a border snaps onto it.
+3. **Tap inside it to fill it** — like a paint bucket, the fill stops at the
+   coast, your lines and the countries already drawn. Islands and other
+   pieces: tap each one. Tap a filled piece again to remove it; if a fill
+   spills out through a border you haven't drawn yet, Undo, draw the
+   missing bit and tap again. Microstates that are only dots on this map
+   (Andorra, Liechtenstein, Monaco, San Marino, Vatican City) are placed
+   with a single tap instead.
+4. **Next country.**
 
 Nothing is checked until you press **Score my map**, and nothing tells you
 how many countries are left — knowing when you've drawn them all is part of
@@ -88,25 +99,22 @@ the game. The only borders you see while playing are your own. The row of
 countries you've drawn lets you reopen one to fix it.
 
 - **Scoring:** each of the continent's countries scores up to 100 points for
-  how well your outline overlaps the real country (intersection over union,
-  computed by rasterizing both on a canvas), counting **land only** — loop
-  out to sea round the coast and it costs nothing, so it's the land borders
-  that matter. 90% overlap or better is full marks, with a gentle curve
-  below that. Countries you didn't draw score 0. Microstates that are only
-  dots on this map (Andorra, Liechtenstein, Monaco, San Marino, Vatican City)
-  are scored on where your loop is centred: full marks within about 40 km,
-  nothing beyond about 400 km.
+  how well the area you filled matches the real country (intersection over
+  union, cell by cell on a grid of the continent's land, ~2.5 million
+  cells). 90% overlap or better is full marks, with a gentle curve below
+  that. Countries you didn't draw score 0. Microstates score for where you
+  put them: full marks within about 40 km, nothing beyond about 400 km.
 - **Results:** every country appears with its real borders, shaded green,
-  yellow or red by score, with your outlines dashed on top (you can hide
+  yellow or red by score, with the borders you drew on top (you can hide
   them). Tap a country, or a name in the list, to see its score. Your best
   total is saved for each continent, and a map in progress survives a
   refresh.
 - **Apple Pencil (iPad):** the first time the Pencil touches the map, the
-  game switches to drawing-app rules: the Pencil draws, one finger moves the
-  map, two fingers zoom, and a palm resting on the screen never draws.
-  Without a Pencil, one finger draws and two fingers move and zoom. With a
-  mouse, drag to draw, scroll to zoom, and Shift-drag or right-drag to move
-  the map.
+  game switches to drawing-app rules: the Pencil draws and taps, one finger
+  moves the map, two fingers zoom, and a palm resting on the screen never
+  draws. Without a Pencil, one finger draws and taps, and two fingers move
+  and zoom. With a mouse, drag to draw, click to fill, scroll to zoom, and
+  Shift-drag or right-drag to move the map.
 - Other continents, the island microstates (Streak Mode's Global Islands)
   and territories that aren't one of the 197 countries (Western Sahara,
   Greenland) are shown faded. Europe's map stops at the Urals.
