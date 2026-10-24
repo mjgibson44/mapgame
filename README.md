@@ -73,19 +73,31 @@ only), and you type the country it's sitting on.
 
 Pick a continent — **Americas**, **Europe**, **Asia** (Australia included)
 or **Africa**, the same areas as Streak Mode — and you get an empty map: its
-coastline with no borders and no names. Then, one country at a time:
+coastline with no borders and no names. There are two ways to play, picked
+on the start screen:
 
-1. **Say which country you'll draw** — type it (3 letters bring up one
-   suggestion, from all 197 countries so it doesn't give away which are on
-   the map).
+- **You name them** — you choose each country you draw by typing its name,
+  and nothing tells you how many are left: knowing when you've drawn them
+  all is part of the game.
+- **Game names them** — the game gives you every country of the continent,
+  one at a time ("12 of 49"), walking from neighbour to neighbour. **Skip**
+  one you don't know (it scores 0); the map is scored as soon as you've done
+  the last one.
+
+Each keeps its own best score. Then, one country at a time:
+
+1. **Say which country you'll draw** (*You name them*) — type it (3 letters
+   bring up one suggestion, from all 197 countries so it doesn't give away
+   which are on the map). In *Game names them* it's given to you.
 2. **Draw its outline** — a loop around it. Countries in pieces (the US and
    Alaska, Indonesia, …) take a loop per piece. Undo and Clear fix mistakes.
-3. **Next country** — your outline stays on the map, and you pick the next.
+3. **Next country** — your outline stays on the map, and you go on to the
+   next.
 
-Nothing is checked until you press **Score my map**, and nothing tells you
-how many countries are left — knowing when you've drawn them all is part of
-the game. The only borders you see while playing are your own. The row of
-countries you've drawn lets you reopen one to fix it.
+Nothing is checked until you press **Score my map** (or, in *Game names
+them*, until the last country). The only borders you see while playing are
+your own. The row of countries you've drawn lets you reopen one to fix it;
+in *Game names them*, Next then takes you back to where you were.
 
 - **Scoring:** each of the continent's countries scores up to 100 points for
   how well your outline overlaps the real country (intersection over union,
