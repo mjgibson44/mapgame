@@ -8,8 +8,8 @@
     const saved = JSON.parse(localStorage.getItem("mapgame-alphabet-v2") || "null");
     found = (saved && saved.found && saved.found.length) || 0;
     best = Number(localStorage.getItem("mapgame-streak-best")) || 0;
-    const run = JSON.parse(localStorage.getItem("mapgame-draw-run") || "null");
-    if (run && Array.isArray(run.order) && run.drawings && !run.result) {
+    const run = JSON.parse(localStorage.getItem("mapgame-draw-run-v2") || "null");
+    if (run && Array.isArray(run.order) && run.order.length && !run.result) {
       drawStat = `${REGIONS.find((r) => r.id === run.cont).name} map in progress`;
     }
   } catch (e) { /* storage unavailable — show no stats */ }
