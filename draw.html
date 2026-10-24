@@ -33,14 +33,13 @@
         <h2 class="panel-title">Border Draw</h2>
         <p class="rules">
           Pick a continent and you get its coastline — no borders, no names.
-          Draw in every border between its countries, all in one go, then
-          score your map.
+          Say which country you're drawing, draw its outline, then move on to
+          the next. Nothing is checked until you score your map.
         </p>
         <ul class="rules-list">
-          <li>Nothing tells you which countries you've missed — that's up to you</li>
-          <li>Each country scores up to <b>100 points</b>: for drawing all of its borders, close to where they really are</li>
-          <li>Stray lines through a country cost it points</li>
-          <li>Only the borders count — the coast is already drawn, and lines out at sea are ignored</li>
+          <li>Nothing tells you which countries are left — that's up to you</li>
+          <li>Each country scores up to <b>100 points</b> for how closely your outline matches it; ones you leave out score 0</li>
+          <li>Only land counts: loop out to sea around the coast, it's the <b>borders</b> that matter</li>
           <li>Works with Apple Pencil: the Pencil draws, fingers move and zoom the map</li>
         </ul>
         <div class="areas-label" id="contLabel">Continent</div>
@@ -54,9 +53,8 @@
         <div class="score" id="finalScore"></div>
         <div class="pct" id="finalPct"></div>
         <label class="check"><input type="checkbox" id="showLines" checked> Show my lines</label>
-        <div id="feedback" class="info">Tap a country on the map to see how you did.</div>
+        <div id="pickInfo" class="info">Tap a country on the map to see how you did.</div>
         <div class="draw-results" id="results"></div>
-        <div class="hint" id="unscored"></div>
         <button id="playagain">Draw it again</button>
         <button class="link" id="changeCont">Change continent</button>
       </div>
@@ -64,14 +62,22 @@
 
     <div class="mapcol">
       <div class="toolbar" id="toolbar" hidden>
-        <div class="seg" role="radiogroup" aria-label="Tool">
-          <button id="penBtn" role="radio" aria-checked="true" title="Draw (D)">✏️ Draw</button>
-          <button id="eraseBtn" role="radio" aria-checked="false" title="Erase (E)">🧽 Erase</button>
+        <div class="naming" id="naming">
+          <div class="inputrow">
+            <input id="guess" type="text" autocomplete="off" autocapitalize="words"
+                   spellcheck="false" placeholder="Which country will you draw?" aria-label="Country to draw">
+            <div id="suggestions" role="listbox"></div>
+          </div>
         </div>
-        <button id="undoBtn" title="Undo (Ctrl+Z)">↶ Undo</button>
-        <button id="clearBtn">Clear</button>
+        <div class="drawing-now" id="drawingNow" hidden>
+          <span class="now-label">Drawing <b id="nowName"></b></span>
+          <button id="undoBtn" title="Undo (Ctrl+Z)">↶ Undo</button>
+          <button id="clearBtn">Clear</button>
+          <button id="nextBtn" class="go" title="Finish this country (Enter)">Next country ›</button>
+        </div>
         <button class="primary" id="doneBtn">Score my map</button>
       </div>
+      <div id="feedback" class="info draw-note"></div>
       <div class="mapbox">
         <div class="mapwrap">
           <svg id="map" class="borderless" xmlns="http://www.w3.org/2000/svg" role="img"
@@ -84,6 +90,7 @@
         </div>
       </div>
       <div class="hint" id="drawHint" hidden></div>
+      <div class="drawn-list" id="drawnList" hidden></div>
     </div>
   </div>
 </div>
@@ -91,6 +98,6 @@
 <script src="map-data.js?v=2"></script>
 <script src="countries.js?v=3"></script>
 <script src="shared.js"></script>
-<script src="draw.js?v=2"></script>
+<script src="draw.js?v=3"></script>
 </body>
 </html>

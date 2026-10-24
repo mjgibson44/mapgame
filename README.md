@@ -73,37 +73,43 @@ only), and you type the country it's sitting on.
 
 Pick a continent — **Americas**, **Europe**, **Asia** (Australia included)
 or **Africa**, the same areas as Streak Mode — and you get an empty map: its
-coastline with no borders and no names. Draw in every border between its
-countries, all in one pass, then press **Score my map**. Nothing tells you
-how many countries there are or which ones you've missed; that's up to you.
+coastline with no borders and no names. Then, one country at a time:
 
-- **Drawing:** drag to draw lines. **Erase** removes any line you swipe
-  across; **Undo** and **Clear** work as you'd expect. Zoom with a pinch, the
-  scroll wheel or the +/− buttons; ⤢ shows the whole continent again.
+1. **Say which country you'll draw** — type it (3 letters bring up one
+   suggestion, from all 197 countries so it doesn't give away which are on
+   the map).
+2. **Draw its outline** — a loop around it. Countries in pieces (the US and
+   Alaska, Indonesia, …) take a loop per piece. Undo and Clear fix mistakes.
+3. **Next country** — your outline stays on the map, and you pick the next.
+
+Nothing is checked until you press **Score my map**, and nothing tells you
+how many countries are left — knowing when you've drawn them all is part of
+the game. The only borders you see while playing are your own. The row of
+countries you've drawn lets you reopen one to fix it.
+
+- **Scoring:** each of the continent's countries scores up to 100 points for
+  how well your outline overlaps the real country (intersection over union,
+  computed by rasterizing both on a canvas), counting **land only** — loop
+  out to sea round the coast and it costs nothing, so it's the land borders
+  that matter. 90% overlap or better is full marks, with a gentle curve
+  below that. Countries you didn't draw score 0. Microstates that are only
+  dots on this map (Andorra, Liechtenstein, Monaco, San Marino, Vatican City)
+  are scored on where your loop is centred: full marks within about 40 km,
+  nothing beyond about 400 km.
+- **Results:** every country appears with its real borders, shaded green,
+  yellow or red by score, with your outlines dashed on top (you can hide
+  them). Tap a country, or a name in the list, to see its score. Your best
+  total is saved for each continent, and a map in progress survives a
+  refresh.
 - **Apple Pencil (iPad):** the first time the Pencil touches the map, the
   game switches to drawing-app rules: the Pencil draws, one finger moves the
   map, two fingers zoom, and a palm resting on the screen never draws.
   Without a Pencil, one finger draws and two fingers move and zoom. With a
-  mouse, Shift-drag or right-drag moves the map.
-- **Scoring:** each country scores up to 100 points, from two things —
-  how much of its real border has one of your lines nearby (*borders
-  drawn*), and how much of your ink inside it lies near a real border
-  (*lines on target*). The score is the harmonic mean of the two (90%+ is
-  full marks), so missing a country's borders and scribbling extra lines
-  both cost. "Nearby" scales with the country's size (roughly 30–120 km).
-  Ink only counts as on target up to about the length of the border it's
-  near, so going over and over a border, or covering a country in lines,
-  doesn't pay. Lines along the coast or out at sea are ignored.
-- **Not scored:** countries with no land borders (Madagascar, Japan, Iceland,
-  Australia, …) and microstates too small for this map (Andorra,
-  Liechtenstein, Monaco, San Marino, Vatican City). The island microstates
-  (Streak Mode's Global Islands), other continents and territories that
-  aren't one of the 197 countries (Western Sahara, Greenland) are shown
-  faded. Europe's map stops at the Urals.
-- **Results:** every country appears with its real borders, shaded green,
-  yellow or red by score, with your lines on top (you can hide them). Tap a
-  country, or a name in the list, to see its score. Your best total is saved
-  for each continent, and a map in progress survives a refresh.
+  mouse, drag to draw, scroll to zoom, and Shift-drag or right-drag to move
+  the map.
+- Other continents, the island microstates (Streak Mode's Global Islands)
+  and territories that aren't one of the 197 countries (Western Sahara,
+  Greenland) are shown faded. Europe's map stops at the Urals.
 
 Switch between modes from the ☰ menu.
 
@@ -176,7 +182,7 @@ North Macedonia and North Korea under **N**, Eswatini under **E**.
 | `shared.js` | Shared by all the modes: answer matching, autocomplete, sound, map drawing, voice, menu, the iOS app's keyboard |
 | `app.js` | Alphabet Mode logic: letters, scoring, save/restore |
 | `streak.js` | Streak Mode logic: clock, random countries, pin placement and zoom |
-| `draw.js` | Border Draw logic: drawing (mouse, touch, Apple Pencil), zoom, scoring, save/restore |
+| `draw.js` | Border Draw logic: naming and drawing countries (mouse, touch, Apple Pencil), zoom, scoring, save/restore |
 | `countries.js` | The 197 countries with ISO codes and accepted aliases, and the Streak Mode map areas |
 | `map-data.js` | Generated world-map SVG paths (Natural Earth 110m data, Natural Earth projection) |
 | `map-detail.js` | Generated detailed outlines (Natural Earth 10m) of the small island countries, for Streak Mode's close-ups |

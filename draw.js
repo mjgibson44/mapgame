@@ -7,15 +7,15 @@
   const BEST_KEY = "mapgame-draw-best";  // + ":" + continent id
   const PEN_KEY = "mapgame-draw-pen";    // "1" once a stylus has been used here
   const MAX_ZOOM = 12;                   // how far in you can zoom, relative to the whole continent
-  const RASTER_PX = 2.2e6;               // scoring grid size, in cells
+  const RASTER = 400;                    // scoring resolution: cells along the longer side
 
-  const { sound } = MapGame;
+  const { lookup, sound } = MapGame;
 
   // The four continents, from the Streak Mode map areas (Asia includes
   // Australia), each with the part of the map to show: Russia is cut off east
   // of the Urals, and France's overseas territories fall outside Europe.
-  // The island microstates (Streak's Global Islands) have no land borders,
-  // so they're shown faded, like the other continents.
+  // The island microstates (Streak's Global Islands) aren't part of this
+  // mode; they're shown faded, like the other continents.
   const VIEWS = {
     americas: { x: 55, y: 0, w: 355, h: 440 },
     europe:   { x: 438, y: 2, w: 226, h: 144 },
@@ -35,10 +35,11 @@
   const el = {
     title: $("drawTitle"), score: $("drawScore"),
     start: $("startPanel"), conts: $("continents"), startBest: $("startBest"), startBtn: $("startBtn"),
-    toolbar: $("toolbar"), pen: $("penBtn"), erase: $("eraseBtn"), undo: $("undoBtn"), clear: $("clearBtn"),
-    done: $("doneBtn"), hint: $("drawHint"),
+    toolbar: $("toolbar"), naming: $("naming"), guess: $("guess"), sug: $("suggestions"),
+    now: $("drawingNow"), nowName: $("nowName"), undo: $("undoBtn"), clear: $("clearBtn"), next: $("nextBtn"),
+    done: $("doneBtn"), feedback: $("feedback"), hint: $("drawHint"), drawnList: $("drawnList"),
     end: $("endscreen"), finalScore: $("finalScore"), finalPct: $("finalPct"), showLines: $("showLines"),
-    feedback: $("feedback"), results: $("results"), unscored: $("unscored"),
+    pickInfo: $("pickInfo"), results: $("results"),
     playagain: $("playagain"), changeCont: $("changeCont"),
     map: $("map"), zoomIn: $("zoomIn"), zoomOut: $("zoomOut"), zoomFit: $("zoomFit"),
   };
@@ -56,12 +57,11 @@
     try { return Number(localStorage.getItem(`${BEST_KEY}:${id}`)) || 0; } catch (e) { return 0; }
   }
 
-  // run = { cont, strokes: [[[x, y], …], …], result: null | { total, max, scores } }
-  // Strokes are open lines, in map units.
+  // run = { cont, order: [codes, as you drew them], drawings: { code: [loop, …] },
+  //         current: code you're drawing or null, result: null | { total, max, scores } }
+  // A loop is a closed outline, as [[x, y], …] in map units.
   let run = null;
   let state = "start"; // "start" | "draw" | "result"
-  let tool = "pen";    // "pen" | "erase"
-  let undoStack = [];  // earlier versions of run.strokes
   let penMode = false; // a stylus has been used: it draws, and fingers only move the map
   try { penMode = localStorage.getItem(PEN_KEY) === "1"; } catch (e) {}
 
@@ -72,11 +72,15 @@
     } catch (e) {}
   }
 
+  const name = (code) => byCode.get(code).name;
+  const loopsOf = (code) => run.drawings[code] || [];
+  const drawnCodes = () => run.order.filter((c) => loopsOf(c).length);
+
   // ---------- Map ----------
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const mapNodes = MapGame.buildMap(el.map);
-  const ink = document.createElementNS(SVG_NS, "g"); // your lines, above the land
+  const ink = document.createElementNS(SVG_NS, "g"); // your outlines, above the land
   ink.setAttribute("class", "ink");
   el.map.appendChild(ink);
 
@@ -139,7 +143,6 @@
     const r = el.map.getBoundingClientRect();
     return [view.x + ((clientX - r.left) / r.width) * view.w, view.y + ((clientY - r.top) / r.height) * view.h];
   }
-  const unitsPerPx = () => view.w / el.map.clientWidth;
 
   // While you draw, the continent is one plain landmass and everything else
   // (other continents, Western Sahara, the island microstates) is faded. On
@@ -151,62 +154,167 @@
       if (contOf(code) !== contId) { node.classList.add("area-off"); continue; }
       if (state !== "result") continue;
       const s = run.result.scores[PART_OF[code] || code];
-      node.classList.add(!s ? "unscored" : s.pts >= 75 ? "pts-hi" : s.pts >= 40 ? "pts-mid" : "pts-lo");
+      node.classList.add(s.pts >= 75 ? "pts-hi" : s.pts >= 40 ? "pts-mid" : "pts-lo");
     }
   }
 
-  // ---------- Your lines ----------
+  // ---------- Your outlines ----------
 
   const pointsAttr = (s) => s.map((p) => p.join(",")).join(" ");
-  function lineEl(s) {
-    const p = document.createElementNS(SVG_NS, "polyline");
-    p.setAttribute("class", "line");
-    p.setAttribute("points", pointsAttr(s));
-    return p;
+  function svgEl(tag, cls, parent) {
+    const n = document.createElementNS(SVG_NS, tag);
+    n.setAttribute("class", cls);
+    parent.appendChild(n);
+    return n;
   }
+
+  // Each country you've drawn is a group of filled loops; the one you're
+  // drawing now is highlighted. No names go on the map.
   function renderInk() {
     ink.textContent = "";
-    if (run) for (const s of run.strokes) ink.appendChild(lineEl(s));
-    updateButtons();
-  }
-
-  function updateButtons() {
-    const empty = !run || !run.strokes.length;
-    el.undo.disabled = !undoStack.length;
-    el.clear.disabled = empty;
-    el.done.disabled = empty;
-    el.pen.setAttribute("aria-checked", String(tool === "pen"));
-    el.erase.setAttribute("aria-checked", String(tool === "erase"));
-    el.map.classList.toggle("erasing", tool === "erase");
-  }
-
-  function remember(strokes) {
-    undoStack.push(strokes);
-    if (undoStack.length > 300) undoStack.shift();
-    disarmDone();
-  }
-
-  // Removes every line passing within r map units of [x, y].
-  function eraseAt([x, y], r) {
-    const before = run.strokes.length;
-    run.strokes = run.strokes.filter((s) => {
-      for (let i = 0; i < s.length; i++) {
-        const [ax, ay] = s[i], [bx, by] = s[Math.min(i + 1, s.length - 1)];
-        const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
-        const t = len2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
-        if (Math.hypot(ax + t * dx - x, ay + t * dy - y) <= r) return false;
+    if (run) {
+      for (const code of run.order) {
+        const g = svgEl("g", code === run.current ? "shape current" : "shape", ink);
+        g.setAttribute("data-for", code);
+        for (const loop of loopsOf(code)) svgEl("polygon", "loop", g).setAttribute("points", pointsAttr(loop));
       }
-      return true;
-    });
-    return run.strokes.length !== before;
+    }
+    updateControls();
   }
+
+  function updateControls() {
+    if (!run || state !== "draw") return;
+    const cur = run.current;
+    el.naming.hidden = !!cur;
+    el.now.hidden = !cur;
+    if (cur) el.nowName.textContent = name(cur);
+    el.undo.disabled = !cur || !loopsOf(cur).length;
+    el.clear.disabled = el.undo.disabled;
+    el.next.disabled = !cur; // with nothing drawn, it just puts the country down
+    const drawn = drawnCodes();
+    el.done.disabled = !drawn.length;
+    el.score.textContent = drawn.length ? `${drawn.length} drawn` : "";
+
+    // the countries you've drawn so far — tap one to fix it
+    el.drawnList.hidden = !run.order.length;
+    el.drawnList.textContent = "";
+    for (const code of run.order) {
+      const b = document.createElement("button");
+      b.textContent = name(code);
+      if (code === cur) b.className = "current";
+      b.addEventListener("click", () => choose(byCode.get(code)));
+      el.drawnList.appendChild(b);
+    }
+  }
+
+  function say(text, kind) {
+    el.feedback.className = `${kind || "info"} draw-note`;
+    el.feedback.textContent = text;
+  }
+
+  // ---------- Choosing a country ----------
+
+  // Done with the current country: forget it if nothing was drawn.
+  function putDown() {
+    const cur = run.current;
+    if (cur && !loopsOf(cur).length) {
+      delete run.drawings[cur];
+      run.order = run.order.filter((c) => c !== cur);
+    }
+    run.current = null;
+  }
+
+  function choose(c) {
+    if (contOf(c.code) !== contId) {
+      say(`${c.name} isn't part of ${cont().name} on this map.`, "err");
+      sound("nomatch");
+      wiggle();
+      return;
+    }
+    disarmDone();
+    putDown();
+    run.current = c.code;
+    if (!run.drawings[c.code]) {
+      run.drawings[c.code] = [];
+      run.order.push(c.code);
+      say(`Draw ${c.name}: loop around it. In pieces? Draw a loop for each. Then “Next country”.`);
+    } else {
+      say(`Fixing ${c.name}: add loops, or Clear to start it again.`);
+    }
+    el.guess.value = "";
+    closeSuggestions();
+    el.guess.blur();
+    save();
+    renderInk();
+  }
+
+  function nextCountry() {
+    if (!run.current) return;
+    putDown();
+    say(`${drawnCodes().length} drawn. Which one next? When you think you've drawn them all, score your map.`);
+    save();
+    renderInk();
+    // on a touch screen, don't pop up the keyboard over the map unasked
+    if (!window.matchMedia("(pointer: coarse)").matches) el.guess.focus();
+  }
+
+  function wiggle() {
+    el.guess.classList.remove("shake");
+    void el.guess.offsetWidth; // restart animation
+    el.guess.classList.add("shake");
+  }
+
+  // Autocomplete: one suggestion at a time, after 3 letters, from all 197
+  // countries — limiting it to the continent would give the answers away.
+  let sug = null;
+  function renderSuggestions() {
+    el.sug.innerHTML = "";
+    if (!sug) { el.sug.classList.remove("open"); return; }
+    const d = document.createElement("div");
+    d.className = "active";
+    d.textContent = sug.c.name;
+    if (sug.via) {
+      const sm = document.createElement("small");
+      sm.textContent = `(${sug.via})`;
+      d.appendChild(sm);
+    }
+    const chosen = sug.c;
+    d.addEventListener("mousedown", (e) => { e.preventDefault(); choose(chosen); });
+    el.sug.appendChild(d);
+    el.sug.classList.add("open");
+  }
+  function closeSuggestions() {
+    sug = null;
+    el.sug.classList.remove("open");
+    el.sug.innerHTML = "";
+  }
+  el.guess.addEventListener("input", () => {
+    sug = MapGame.suggest(el.guess.value, COUNTRIES);
+    renderSuggestions();
+  });
+  el.guess.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const c = sug ? sug.c : lookup.get(MapGame.normalize(el.guess.value));
+      if (c) choose(c);
+      else if (el.guess.value.trim()) {
+        sound("nomatch");
+        say(`“${el.guess.value.trim()}” isn't a country we recognize.`);
+        wiggle();
+      }
+    } else if (e.key === "Escape") {
+      closeSuggestions();
+    }
+  });
+  el.guess.addEventListener("blur", () => setTimeout(closeSuggestions, 150));
 
   // ---------- Pointer input ----------
   //
-  // Mouse: drag draws (or erases); Shift-drag or a right/middle-button drag
-  // moves the map, and the wheel zooms. Touch: one finger draws, two move and
-  // zoom. Once a stylus (Apple Pencil) is used, the stylus draws and fingers
-  // only move and zoom the map — so a palm resting on the screen never draws.
+  // Mouse: drag draws; Shift-drag or a right/middle-button drag moves the
+  // map, and the wheel zooms. Touch: one finger draws, two move and zoom.
+  // Once a stylus (Apple Pencil) is used, the stylus draws and fingers only
+  // move and zoom the map — so a palm resting on the screen never draws.
+  // Until you've said which country you're drawing, any drag moves the map.
 
   const pointers = new Map(); // pointerId -> { x, y, type }
   let gesture = null;
@@ -238,19 +346,16 @@
       return;
     }
     if (gesture) return;
-    const fingerOnly = penMode && e.pointerType === "touch";
-    const moveMap = e.shiftKey || e.button === 1 || e.button === 2 || fingerOnly || state !== "draw";
     const at = toMap(e.clientX, e.clientY);
+    const moveMap = e.shiftKey || e.button === 1 || e.button === 2 ||
+      (penMode && e.pointerType === "touch") || state !== "draw" || !run.current;
     if (moveMap) {
       gesture = { kind: "pan", id: e.pointerId, from: at, start: [e.clientX, e.clientY], tap: true };
-    } else if (tool === "erase") {
-      gesture = { kind: "erase", id: e.pointerId, pen: e.pointerType === "pen", before: run.strokes, last: at };
-      eraseAt(at, 10 * unitsPerPx()) && renderInk();
     } else {
-      const stroke = [at.map(round)];
-      gesture = { kind: "draw", id: e.pointerId, pen: e.pointerType === "pen", stroke, node: lineEl(stroke),
-                  last: [e.clientX, e.clientY], moved: 0 };
-      ink.appendChild(gesture.node);
+      const loop = [at.map(round)];
+      const group = ink.querySelector(".shape.current") || ink;
+      gesture = { kind: "draw", id: e.pointerId, pen: e.pointerType === "pen", loop,
+                  node: svgEl("polyline", "stroke", group), last: [e.clientX, e.clientY], moved: 0 };
     }
   });
 
@@ -281,23 +386,13 @@
     // a stylus reports several points per frame; use them all for a smooth line
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
     for (const ev of events.length ? events : [e]) {
-      if (gesture.kind === "erase") {
-        // check every few pixels along the way, so a quick swipe misses nothing
-        const r = 10 * unitsPerPx(), [x0, y0] = gesture.last, [x1, y1] = toMap(ev.clientX, ev.clientY);
-        const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (r / 2)));
-        let hit = false;
-        for (let k = 1; k <= steps; k++) hit = eraseAt([x0 + ((x1 - x0) * k) / steps, y0 + ((y1 - y0) * k) / steps], r) || hit;
-        gesture.last = [x1, y1];
-        if (hit) renderInk();
-        continue;
-      }
       const d = Math.hypot(ev.clientX - gesture.last[0], ev.clientY - gesture.last[1]);
       if (d < 1.5) continue;
       gesture.moved += d;
       gesture.last = [ev.clientX, ev.clientY];
-      gesture.stroke.push(toMap(ev.clientX, ev.clientY).map(round));
+      gesture.loop.push(toMap(ev.clientX, ev.clientY).map(round));
     }
-    if (gesture.kind === "draw") gesture.node.setAttribute("points", pointsAttr(gesture.stroke));
+    gesture.node.setAttribute("points", pointsAttr(gesture.loop));
   });
 
   function pointerEnd(e, cancelled) {
@@ -313,15 +408,17 @@
     if (e.pointerId !== g.id) return;
     gesture = null;
     if (g.kind === "draw") {
-      if (cancelled || g.moved < 4 || g.stroke.length < 2) { g.node.remove(); return; }
-      remember(run.strokes.slice());
-      run.strokes.push(g.stroke);
+      g.node.remove();
+      if (cancelled || g.moved < 12 || g.loop.length < 3) return;
+      run.drawings[run.current].push(g.loop); // closed into a loop
+      disarmDone();
       save();
-      updateButtons();
-    } else if (g.kind === "erase") {
-      if (run.strokes.length !== g.before.length) { remember(g.before); save(); updateButtons(); }
+      renderInk();
     } else if (g.tap && !cancelled && state === "result") {
       pickAt(e.clientX, e.clientY); // a tap on the result: which country is that?
+    } else if (g.tap && !cancelled && state === "draw" && !run.current) {
+      say("First type which country you're drawing.");
+      wiggle();
     }
   }
   el.map.addEventListener("pointerup", (e) => pointerEnd(e, false));
@@ -349,172 +446,117 @@
   }
 
   // ---------- Scoring ----------
-  //
-  // The continent is rasterized to a grid of country labels. Real borders are
-  // the cells where two of the continent's countries meet. Then, per country:
-  //   found    — how much of its border has one of your lines nearby
-  //   onTarget — how much of your line inside it lies near a real border
-  // Nearness uses a tolerance that scales with the country's size: full
-  // credit close to the line, none past the tolerance. Lines along the coast
-  // or the faded land's edge are ignored (they're already drawn), and ink
-  // near a border counts only up to about the border's own length — past
-  // that it's extra lines, so scribbling all over a country doesn't pay. The score is
-  // the harmonic mean (F1) of found and onTarget, so it takes both drawing
-  // every border and not drawing ones that aren't there; 90% or better is
-  // full marks. Countries with no land borders (islands) and the
-  // microstates aren't scored.
 
-  const ringCache = new Map();
-  function ringsOf(code) {
-    if (ringCache.has(code)) return ringCache.get(code);
-    const rings = [];
-    let ring = null, x = 0, y = 0, m;
-    const re = /([Ml])([^MlZ]*)/g; // "M x y", then relative "l dx dy", then "Z"
-    while ((m = re.exec(MAP_DATA.shapes[code].d))) {
+  // Each outline is compared with the real country by rasterizing both on a
+  // canvas, keeping only land: the overlap divided by the combined area
+  // (intersection over union). Drawing over the sea costs nothing; drawing
+  // over a neighbour, or missing part of the country, does.
+  const pathCache = new Map();
+  const pathOf = (shape) => {
+    if (!pathCache.has(shape)) pathCache.set(shape, new Path2D(MAP_DATA.shapes[shape].d));
+    return pathCache.get(shape);
+  };
+  const shapesOf = (code) => Object.keys(MAP_DATA.shapes).filter((s) => (PART_OF[s] || s) === code);
+  const boxCache = new Map();
+  function shapeBox(shape) {
+    if (boxCache.has(shape)) return boxCache.get(shape);
+    // paths are "M x y", then relative "l dx dy" segments, then "Z"
+    const re = /([Ml])([^MlZ]*)/g;
+    let m, x = 0, y = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    while ((m = re.exec(MAP_DATA.shapes[shape].d))) {
       const n = m[2].trim().split(/\s+/).map(Number);
-      if (m[1] === "M") { [x, y] = n; ring = [[x, y]]; rings.push(ring); }
-      else { x += n[0]; y += n[1]; ring.push([x, y]); }
+      if (m[1] === "M") [x, y] = n;
+      else { x += n[0]; y += n[1]; }
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
     }
-    ringCache.set(code, rings);
-    return rings;
+    const b = { minX, minY, maxX, maxY };
+    boxCache.set(shape, b);
+    return b;
   }
 
-  // Chamfer distance transform: for every cell, ~3× the distance in cells
-  // to the nearest seed cell.
-  function distanceTo(seed, W, H) {
-    const d = new Int32Array(W * H);
-    for (let i = 0; i < d.length; i++) d[i] = seed[i] ? 0 : 1e9;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0, i = y * W; x < W; x++, i++) {
-        let v = d[i];
-        if (!v) continue;
-        if (x > 0) v = Math.min(v, d[i - 1] + 3);
-        if (y > 0) {
-          v = Math.min(v, d[i - W] + 3);
-          if (x > 0) v = Math.min(v, d[i - W - 1] + 4);
-          if (x < W - 1) v = Math.min(v, d[i - W + 1] + 4);
-        }
-        d[i] = v;
-      }
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+  function overlap(code, loops) {
+    const cb = cont().box;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of [...loops.flat(), ...shapesOf(code).flatMap((s) => {
+      const b = shapeBox(s);
+      return [[b.minX, b.minY], [b.maxX, b.maxY]];
+    })]) {
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
     }
-    for (let y = H - 1; y >= 0; y--) {
-      for (let x = W - 1, i = y * W + x; x >= 0; x--, i--) {
-        let v = d[i];
-        if (!v) continue;
-        if (x < W - 1) v = Math.min(v, d[i + 1] + 3);
-        if (y < H - 1) {
-          v = Math.min(v, d[i + W] + 3);
-          if (x < W - 1) v = Math.min(v, d[i + W + 1] + 4);
-          if (x > 0) v = Math.min(v, d[i + W - 1] + 4);
-        }
-        d[i] = v;
-      }
+    // only the part of the map this continent shows
+    minX = Math.max(minX, cb.x); minY = Math.max(minY, cb.y);
+    maxX = Math.min(maxX, cb.x + cb.w); maxY = Math.min(maxY, cb.y + cb.h);
+    if (maxX <= minX || maxY <= minY) return 0;
+    const scale = RASTER / Math.max(maxX - minX, maxY - minY);
+    const W = Math.max(1, Math.ceil((maxX - minX) * scale)), H = Math.max(1, Math.ceil((maxY - minY) * scale));
+    canvas.width = W; canvas.height = H;
+
+    function layer(paint) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      ctx.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale);
+      ctx.fillStyle = "#000";
+      paint();
+      return ctx.getImageData(0, 0, W, H).data;
     }
-    return d;
+    const land = layer(() => {
+      for (const s of Object.keys(MAP_DATA.shapes)) {
+        const b = shapeBox(s);
+        if (b.maxX >= minX && b.minX <= maxX && b.maxY >= minY && b.minY <= maxY) ctx.fill(pathOf(s));
+      }
+    });
+    // evenodd: holes such as Lesotho stay out
+    const truth = layer(() => { for (const s of shapesOf(code)) ctx.fill(pathOf(s), "evenodd"); });
+    const drawn = layer(() => {
+      for (const loop of loops) {
+        ctx.beginPath();
+        loop.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.closePath();
+        ctx.fill();
+      }
+    });
+    let inter = 0, union = 0;
+    for (let i = 3; i < land.length; i += 4) {
+      const T = truth[i] >= 128, D = drawn[i] >= 128 && land[i] >= 128;
+      if (T && D) inter++;
+      if (T || D) union++;
+    }
+    return union ? inter / union : 0;
   }
 
-  function scoreMap(strokes) {
-    const b = cont().box;
-    const R = Math.sqrt(RASTER_PX / (b.w * b.h)); // cells per map unit
-    const W = Math.ceil(b.w * R), H = Math.ceil(b.h * R);
-    const label = new Uint8Array(W * H);
-    const codes = [null];          // label -> country code; 0 is the sea
-    const idOf = new Map();
-    const inCont = [0];
+  // Points out of 100. A freehand outline never matches exactly, so 90%
+  // overlap or better earns full marks, with a gentle curve below that.
+  const drawPoints = (iou) => Math.round(100 * Math.pow(Math.min(1, iou / 0.9), 0.75));
 
-    // Countries, filled row by row (even-odd, sampling cell centres)
-    for (const shape of Object.keys(MAP_DATA.shapes)) {
-      const code = PART_OF[shape] || shape;
-      if (!idOf.has(code)) {
-        idOf.set(code, codes.length);
-        codes.push(code);
-        inCont.push(contOf(code) === contId ? 1 : 0);
-      }
-      const id = idOf.get(code);
-      const rows = new Map();
-      for (const ring of ringsOf(shape)) {
-        for (let k = 0; k < ring.length; k++) {
-          const [x1, y1] = ring[k], [x2, y2] = ring[(k + 1) % ring.length];
-          if (y1 === y2) continue;
-          const Y1 = (y1 - b.y) * R, Y2 = (y2 - b.y) * R;
-          const j0 = Math.max(0, Math.ceil(Math.min(Y1, Y2) - 0.5));
-          const j1 = Math.min(H - 1, Math.ceil(Math.max(Y1, Y2) - 0.5) - 1);
-          for (let j = j0; j <= j1; j++) {
-            const X = (x1 - b.x + (((j + 0.5) / R + b.y - y1) * (x2 - x1)) / (y2 - y1)) * R;
-            if (!rows.has(j)) rows.set(j, []);
-            rows.get(j).push(X);
-          }
-        }
-      }
-      for (const [j, xs] of rows) {
-        xs.sort((p, q) => p - q);
-        for (let k = 0; k + 1 < xs.length; k += 2) {
-          const a = Math.max(0, Math.ceil(xs[k] - 0.5)), z = Math.min(W, Math.ceil(xs[k + 1] - 0.5));
-          if (z > a) label.fill(id, j * W + a, j * W + z);
-        }
-      }
-    }
+  // Microstates are dots on this map: they're scored on where your loop is
+  // centred — full marks within about 40 km (1 map unit), nothing beyond
+  // about 400 km.
+  function dotPoints(code, loops) {
+    const pts = loops.flat();
+    const x = pts.reduce((s, p) => s + p[0], 0) / pts.length, y = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+    const [dx, dy] = MAP_DATA.dots[code];
+    return Math.round(100 * Math.max(0, Math.min(1, 1 - (Math.hypot(x - dx, y - dy) - 1) / 9)));
+  }
 
-    // Real borders, and the coast and faded land's edges
-    const truth = new Uint8Array(W * H), coast = new Uint8Array(W * H);
-    for (let y = 0; y < H; y++) {
-      for (let x = 0, i = y * W; x < W; x++, i++) {
-        const a = label[i];
-        for (const j of [x < W - 1 ? i + 1 : -1, y < H - 1 ? i + W : -1]) {
-          if (j < 0 || label[j] === a) continue;
-          if (inCont[a] && inCont[label[j]]) truth[i] = truth[j] = 1;
-          else coast[i] = coast[j] = 1;
-        }
-      }
-    }
-
-    // Your lines
-    const mine = new Uint8Array(W * H);
-    for (const s of strokes) {
-      for (let k = 0; k < s.length; k++) {
-        const [x1, y1] = s[k], [x2, y2] = s[Math.min(k + 1, s.length - 1)];
-        const X1 = (x1 - b.x) * R, Y1 = (y1 - b.y) * R, X2 = (x2 - b.x) * R, Y2 = (y2 - b.y) * R;
-        const n = Math.max(1, Math.ceil(Math.hypot(X2 - X1, Y2 - Y1) * 2));
-        for (let t = 0; t <= n; t++) {
-          const X = Math.floor(X1 + ((X2 - X1) * t) / n), Y = Math.floor(Y1 + ((Y2 - Y1) * t) / n);
-          if (X >= 0 && X < W && Y >= 0 && Y < H) mine[Y * W + X] = 1;
-        }
-      }
-    }
-
-    const toMine = distanceTo(mine, W, H), toTruth = distanceTo(truth, W, H), toCoast = distanceTo(coast, W, H);
-    const n = codes.length;
-    const area = new Float64Array(n), borderN = new Float64Array(n), found = new Float64Array(n);
-    const near = new Float64Array(n), stray = new Float64Array(n);
-    for (let i = 0; i < label.length; i++) area[label[i]]++;
-    // tolerance (×3, like the distances): 15% of the country's size, between
-    // 0.8 and 3 map units (roughly 30–120 km)
-    const tol = Array.from(area, (a) => Math.min(3, Math.max(0.8, (0.15 * Math.sqrt(a)) / R)) * R * 3);
-    const credit = (d, T) => (d <= 0.3 * T ? 1 : Math.max(0, 1 - (d - 0.3 * T) / (0.7 * T)));
-    for (let i = 0; i < label.length; i++) {
-      const a = label[i];
-      if (!inCont[a]) continue;
-      if (truth[i]) { borderN[a]++; found[a] += credit(toMine[i], tol[a]); }
-      if (mine[i] && !(toCoast[i] < toTruth[i] && toCoast[i] <= tol[a])) {
-        const c = credit(toTruth[i], tol[a]);
-        near[a] += c; stray[a] += 1 - c;
-      }
-    }
-
+  function scoreMap() {
     const scores = {};
-    let total = 0, max = 0;
-    for (let id = 1; id < n; id++) {
-      if (!inCont[id] || !borderN[id]) continue;
-      const F = found[id] / borderN[id];
-      const useful = Math.min(near[id], 0.9 * borderN[id]); // a traced border is ~0.6–0.8
-      const extra = stray[id] + near[id] - useful;
-      const P = useful + extra ? useful / (useful + extra) : 1;
-      const f1 = F + P ? (2 * F * P) / (F + P) : 0;
-      const pts = Math.round(100 * Math.min(1, f1 / 0.9));
-      scores[codes[id]] = { pts, found: Math.round(100 * F), onTarget: Math.round(100 * P) };
-      total += pts; max += 100;
+    let total = 0;
+    for (const code of cont().codes) {
+      const loops = loopsOf(code);
+      let s;
+      if (!loops.length) s = { pts: 0, drawn: false };
+      else if (MAP_DATA.dots[code]) s = { pts: dotPoints(code, loops), drawn: true };
+      else {
+        const iou = overlap(code, loops);
+        s = { pts: drawPoints(iou), overlap: Math.round(100 * iou), drawn: true };
+      }
+      scores[code] = s;
+      total += s.pts;
     }
-    return { total, max, scores };
+    return { total, max: cont().codes.length * 100, scores };
   }
 
   // ---------- Game flow ----------
@@ -526,7 +568,10 @@
     el.end.hidden = s !== "result";
     el.toolbar.hidden = s !== "draw";
     el.hint.hidden = s !== "draw";
+    el.feedback.hidden = s !== "draw";
+    el.drawnList.hidden = s !== "draw" || !run.order.length;
     ink.classList.toggle("faded", s === "result" && !el.showLines.checked);
+    ink.classList.toggle("result", s === "result");
     paintMap();
     renderInk();
     renderHeader();
@@ -536,17 +581,19 @@
 
   function renderHeader() {
     el.title.innerHTML = state === "start" ? "Border Draw" : `Border Draw<small>${cont().name}</small>`;
-    el.score.textContent = state === "result" ? `${run.result.total} / ${run.result.max}` : "";
+    el.score.textContent = state === "result" ? `${run.result.total} / ${run.result.max}`
+      : state === "draw" && drawnCodes().length ? `${drawnCodes().length} drawn` : "";
   }
 
   function startDrawing(fresh) {
-    if (fresh || !run || run.cont !== contId) run = { cont: contId, strokes: [], result: null };
-    undoStack = [];
-    tool = "pen";
+    if (fresh || !run || run.cont !== contId) run = { cont: contId, order: [], drawings: {}, current: null, result: null };
     save();
     updateHint();
     window.scrollTo(0, 0);
     setState("draw");
+    if (run.current) say(`Drawing ${name(run.current)}.`);
+    else say(run.order.length ? `${drawnCodes().length} drawn. Which one next?`
+      : "Type the country you're going to draw first, then draw its outline on the map.");
   }
 
   // Scoring can't be undone, so "Score my map" asks for a second tap.
@@ -557,18 +604,19 @@
     el.done.textContent = "Score my map";
   }
   el.done.addEventListener("click", () => {
-    if (!run.strokes.length) return;
+    if (!drawnCodes().length) return;
     if (!el.done.classList.contains("armed")) {
       el.done.classList.add("armed");
-      el.done.textContent = "Finished? Tap again";
+      el.done.textContent = "Drawn them all? Tap again";
       armTimer = setTimeout(disarmDone, 4000);
       return;
     }
     disarmDone();
+    putDown();
     el.done.textContent = "Scoring…";
     el.done.disabled = true;
     setTimeout(() => {                 // let "Scoring…" paint first
-      run.result = scoreMap(run.strokes);
+      run.result = scoreMap();
       save();
       showResult(true);
     }, 30);
@@ -582,27 +630,24 @@
     }
     setState("result");
     const pct = Math.round((100 * total) / max);
+    const n = Object.keys(scores).length, drawn = Object.values(scores).filter((s) => s.drawn).length;
     el.finalScore.textContent = `${pct}%`;
-    el.finalPct.textContent = `${total} of ${max} points across ${max / 100} countries` +
+    el.finalPct.textContent = `${total} of ${max} points · you drew ${drawn} of ${n} countries` +
       (fresh && total > prevBest && prevBest ? " — a new best!" : prevBest ? ` · Your best: ${Math.max(prevBest, total)}` : "");
-    el.feedback.className = "info";
-    el.feedback.textContent = "Tap a country on the map to see how you did.";
+    el.pickInfo.className = "info";
+    el.pickInfo.textContent = "Tap a country on the map to see how you did.";
 
     el.results.textContent = "";
-    const name = (code) => byCode.get(code).name;
     const list = Object.entries(scores).sort((a, b) => b[1].pts - a[1].pts || name(a[0]).localeCompare(name(b[0])));
     for (const [code, s] of list) {
       const row = document.createElement("button");
-      row.className = s.pts >= 75 ? "pts-hi" : s.pts >= 40 ? "pts-mid" : "pts-lo";
+      row.className = (s.pts >= 75 ? "pts-hi" : s.pts >= 40 ? "pts-mid" : "pts-lo") + (s.drawn ? "" : " missed");
       row.innerHTML = "<span></span><b></b>";
       row.firstChild.textContent = name(code);
-      row.lastChild.textContent = s.pts;
+      row.lastChild.textContent = s.drawn ? s.pts : "not drawn";
       row.addEventListener("click", () => pick(code));
       el.results.appendChild(row);
     }
-    const skipped = cont().codes.filter((c) => !scores[c]).map(name).sort();
-    el.unscored.textContent = skipped.length
-      ? `Not scored — islands with no land borders, or too small for this map: ${skipped.join(", ")}.` : "";
     if (fresh) sound(pct >= 50 ? "complete" : "gameover");
   }
 
@@ -613,21 +658,24 @@
     if (code && contOf(code) === contId) pick(PART_OF[code] || code);
   }
 
+  // Highlights a country on the result, with your outline for it.
   function pick(code) {
     for (const node of el.map.querySelectorAll(".picked")) node.classList.remove("picked");
     for (const [c, node] of mapNodes) if ((PART_OF[c] || c) === code) {
       node.classList.add("picked");
       node.parentNode.insertBefore(node, ink); // on top, so its whole outline shows
     }
-    const s = run.result.scores[code], name = byCode.get(code).name;
-    el.feedback.className = !s ? "info" : s.pts >= 50 ? "ok" : "err";
-    el.feedback.textContent = s
-      ? `${name}: ${s.pts} points — ${s.found}% of its borders drawn, ${s.onTarget}% of your lines in it on target`
-      : `${name} isn't scored: it has no land borders, or is too small for this map.`;
+    const mine = ink.querySelector(`[data-for="${code}"]`);
+    if (mine) mine.classList.add("picked");
+    const s = run.result.scores[code];
+    el.pickInfo.className = s.pts >= 50 ? "ok" : "err";
+    el.pickInfo.textContent = !s.drawn ? `${name(code)}: not drawn — 0 points`
+      : s.overlap === undefined ? `${name(code)}: ${s.pts} points, for where you put it`
+      : `${name(code)}: ${s.pts} points — your outline overlaps it ${s.overlap}% (on land)`;
   }
 
   function showStart() {
-    run = null; undoStack = [];
+    run = null;
     save();
     setState("start");
     renderContinents();
@@ -660,28 +708,26 @@
   el.startBtn.addEventListener("click", () => startDrawing(true));
   el.playagain.addEventListener("click", () => startDrawing(true));
   el.changeCont.addEventListener("click", showStart);
-  el.pen.addEventListener("click", () => { tool = "pen"; updateButtons(); });
-  el.erase.addEventListener("click", () => { tool = "erase"; updateButtons(); });
   el.undo.addEventListener("click", () => {
-    if (!undoStack.length) return;
-    run.strokes = undoStack.pop();
+    if (!run.current || !loopsOf(run.current).length) return;
+    run.drawings[run.current].pop();
     disarmDone();
     save();
     renderInk();
   });
   el.clear.addEventListener("click", () => {
-    if (!run.strokes.length) return;
-    remember(run.strokes);
-    run.strokes = [];
+    if (!run.current) return;
+    run.drawings[run.current] = [];
+    disarmDone();
     save();
     renderInk();
   });
+  el.next.addEventListener("click", nextCountry);
   el.showLines.addEventListener("change", () => ink.classList.toggle("faded", !el.showLines.checked));
   document.addEventListener("keydown", (e) => {
     if (state !== "draw" || e.target.closest("input, textarea")) return;
     if (e.key === "z" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); el.undo.click(); }
-    else if (e.key === "e" || e.key === "E") el.erase.click();
-    else if (e.key === "d" || e.key === "D") el.pen.click();
+    else if (e.key === "Enter" && !e.target.closest("button") && !el.next.disabled) { e.preventDefault(); nextCountry(); }
   });
 
   MapGame.setupMenu({ onReset: showStart });
@@ -689,7 +735,8 @@
   // Resume a saved map (drawing or scored), or show the start screen.
   try {
     const saved = JSON.parse(localStorage.getItem(RUN_KEY) || "null");
-    if (saved && VIEWS[saved.cont] && Array.isArray(saved.strokes)) {
+    if (saved && VIEWS[saved.cont] && Array.isArray(saved.order) && saved.drawings &&
+        saved.order.every((c) => byCode.has(c))) {
       run = saved;
       contId = saved.cont;
     }
