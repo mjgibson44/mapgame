@@ -6,6 +6,7 @@
   const CONT_KEY = "mapgame-draw-continent";
   const BEST_KEY = "mapgame-draw-best";  // + ":" + continent id
   const PEN_KEY = "mapgame-draw-pen";    // "1" once a stylus has been used here
+  const HISTORY_KEY = "mapgame-draw-history"; // every map you've scored, oldest first
   const MAX_ZOOM = 12;                   // how far in you can zoom, relative to the whole continent
   const GRID_CELLS = 2.5e6;              // the land grid fills and scoring work on
   const SNAP_PX = 16;                    // a line ending this close to the coast or a border joins it
@@ -41,6 +42,7 @@
     toolbar: $("toolbar"), naming: $("naming"), guess: $("guess"), sug: $("suggestions"),
     now: $("drawingNow"), nowName: $("nowName"), undo: $("undoBtn"), clear: $("clearBtn"), next: $("nextBtn"),
     done: $("doneBtn"), feedback: $("feedback"), hint: $("drawHint"), drawnList: $("drawnList"),
+    pastMaps: $("pastMaps"), endTitle: $("endTitle"), trend: $("trend"),
     end: $("endscreen"), finalScore: $("finalScore"), finalPct: $("finalPct"), showLines: $("showLines"),
     pickInfo: $("pickInfo"), results: $("results"),
     playagain: $("playagain"), changeCont: $("changeCont"),
@@ -71,6 +73,7 @@
   let run = null;
   let state = "start"; // "start" | "draw" | "result"
   let actions = [];    // what you've done to the current country, for Undo
+  let viewing = null;  // a past map you're looking at (from the history), not the current game
   let penMode = false; // a stylus has been used: it draws, and fingers only move the map
   try { penMode = localStorage.getItem(PEN_KEY) === "1"; } catch (e) {}
 
@@ -206,6 +209,7 @@
   }
 
   function save() {
+    if (viewing) return; // looking at a past map: the saved game is left alone
     try {
       if (run) {
         if (owner) run.fills = encodeOwner();
@@ -312,7 +316,7 @@
   // one you're on more strongly, with a dark edge wherever it meets land
   // that isn't its own. On the result only the edges are drawn.
   const canvas = document.createElement("canvas");
-  let fillsUrl = null;
+  let fillsUrl = null, fillsVersion = 0; // a picture still being made when a newer one starts is dropped
   function inkRGB() {
     const probe = document.createElement("span");
     probe.style.color = "var(--ink)";
@@ -322,6 +326,7 @@
     return m;
   }
   function renderFills() {
+    const version = ++fillsVersion;
     if (!grid || !owner) { fillsImg.removeAttribute("href"); return; }
     const { W, H, b, fillable } = grid;
     canvas.width = W; canvas.height = H;
@@ -347,7 +352,7 @@
     fillsImg.setAttribute("x", b.x); fillsImg.setAttribute("y", b.y);
     fillsImg.setAttribute("width", W / grid.R); fillsImg.setAttribute("height", H / grid.R);
     canvas.toBlob((blob) => {
-      if (!blob) return;
+      if (!blob || version !== fillsVersion) return;
       if (fillsUrl) URL.revokeObjectURL(fillsUrl);
       fillsUrl = URL.createObjectURL(blob);
       fillsImg.setAttribute("href", fillsUrl);
@@ -411,15 +416,25 @@
 
   // ---------- Drawing a country ----------
 
-  // A line that ends just short of the coast, a filled country or another of
-  // your lines is extended to meet it, so the fill can't leak through the gap.
+  // A line that ends just short of the coast, the edge of a country or
+  // another of your lines is extended to meet it, so the fill can't leak
+  // through the gap; a line that ends near where it started closes into a
+  // loop.
   function snapEnds(stroke) {
+    const first = stroke[0], last = stroke[stroke.length - 1];
+    if (stroke.length > 4 && Math.hypot(last[0] - first[0], last[1] - first[1]) < 2.5 * SNAP_PX * unitsPerPx()) {
+      stroke.push(first.slice());
+      return stroke;
+    }
     const others = rasterLines(linesOf(run.current), new Uint8Array(grid.W * grid.H));
-    const blocks = (i) => !grid.fillable[i] || owner[i] || others[i];
     const reach = Math.ceil(SNAP_PX * unitsPerPx() * grid.R);
     const nearest = (p) => {
       const i = cellOf(p);
-      if (i < 0 || blocks(i)) return null; // already over the sea or a border
+      if (i < 0 || !grid.fillable[i] || others[i]) return null; // already over the sea or a line
+      // inside open land, the edge is the coast or a country; inside a
+      // country, it's the edge of that country
+      const inside = owner[i];
+      const blocks = (j) => !grid.fillable[j] || owner[j] !== inside || others[j];
       const cx = i % grid.W, cy = Math.floor(i / grid.W);
       let best = null, bestD = Infinity;
       for (let dy = -reach; dy <= reach; dy++) {
@@ -450,18 +465,51 @@
       return;
     }
     const was = owner[start];
-    if (was && was !== v) {
-      say(`That's already ${name(run.slots[was - 1])}. To change it, pick ${name(run.slots[was - 1])} from the list below.`, "err");
-      return;
-    }
     const { W, H, fillable } = grid;
     const lines = rasterLines(linesOf(code), new Uint8Array(W * H));
-    if (!was && lines[start]) { say("That's right on one of your lines — tap a little inside it."); return; }
+    if (was !== v && lines[start]) { say("That's right on one of your lines — tap a little inside it."); return; }
     const N = W * H;
     const around = (i) => {
       const x = i % W;
       return [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i >= W ? i - W : -1, i + W < N ? i + W : -1];
     };
+    if (was && was !== v) {
+      // Tapped inside a country you've already drawn: the part of it your
+      // lines cut off (Lesotho inside South Africa, or a corrected border)
+      // becomes this country.
+      const other = run.slots[was - 1];
+      const seen = new Uint8Array(N), part = [], stack = [start];
+      seen[start] = 1;
+      let whole = 0, onLines = 0;
+      while (stack.length) { // the whole piece of the other country, noting the part your lines enclose
+        const i = stack.pop();
+        whole++;
+        if (lines[i]) onLines++;
+        for (const j of around(i)) if (j >= 0 && !seen[j] && owner[j] === was) { seen[j] = 1; stack.push(j); }
+      }
+      seen.fill(0);
+      seen[start] = 1;
+      stack.push(start);
+      while (stack.length) {
+        const i = stack.pop();
+        part.push(i);
+        for (const j of around(i)) if (j >= 0 && !seen[j] && owner[j] === was && !lines[j]) { seen[j] = 1; stack.push(j); }
+      }
+      if (part.length + onLines >= whole) {
+        say(`That's ${name(other)}. To give part of it to ${name(code)}, first draw a border across it ` +
+          `(or a loop inside it), then tap the part that's ${name(code)}.`, "err");
+        return;
+      }
+      for (const i of part) owner[i] = v;
+      for (const i of part.slice()) {
+        for (const j of around(i)) if (j >= 0 && lines[j] && owner[j] === was) { owner[j] = v; part.push(j); }
+      }
+      counts[was] -= part.length; counts[v] += part.length;
+      actions.push({ t: "carve", v, from: was, cells: Int32Array.from(part) });
+      say(`Took that part from ${name(other)}. More pieces? Draw and tap them too. Then “Next country”.`);
+      changed();
+      return;
+    }
     // floods from `from` through cells that pass `ok`, giving them to `to`
     const cells = [];
     const flood = (from, ok, to) => {
@@ -831,6 +879,63 @@
     return { total, max: cont().codes.length * 100, scores };
   }
 
+  // ---------- Past maps ----------
+  //
+  // Every map you score is kept on this device, with your borders, so you
+  // can look back and see how you're improving. A map is ~50–150 KB; when
+  // storage runs out the oldest ones go.
+
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch (e) { return []; }
+  }
+
+  function addToHistory() {
+    const list = loadHistory();
+    list.push({
+      id: Date.now(), date: new Date().toISOString(), cont: run.cont, result: run.result,
+      slots: run.slots, taps: run.taps, fills: run.fills,
+    });
+    while (list.length) {
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); return; } catch (e) { list.shift(); }
+    }
+  }
+
+  const pctOf = (m) => Math.round((100 * m.result.total) / m.result.max);
+  const dateOf = (m) => new Date(m.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+  // The start screen's list of past maps for the chosen continent, newest
+  // first, each with a bar for its score.
+  function renderPast() {
+    const mine = loadHistory().filter((m) => m.cont === contId).reverse();
+    el.pastMaps.textContent = "";
+    if (!mine.length) return;
+    const head = document.createElement("div");
+    head.className = "areas-label";
+    const best = Math.max(...mine.map(pctOf));
+    head.textContent = `Your past maps of ${cont().name} · best ${best}%`;
+    el.pastMaps.appendChild(head);
+    for (const m of mine) {
+      const row = document.createElement("button");
+      const drawn = Object.values(m.result.scores).filter((x) => x.drawn).length;
+      row.innerHTML = "<span></span><i><u></u></i><b></b>";
+      row.children[0].textContent = dateOf(m);
+      row.children[1].firstChild.style.width = `${pctOf(m)}%`;
+      row.children[2].textContent = `${pctOf(m)}%`;
+      row.title = `${m.result.total} of ${m.result.max} points · ${drawn} of ${Object.keys(m.result.scores).length} countries drawn`;
+      row.addEventListener("click", () => viewPast(m));
+      el.pastMaps.appendChild(row);
+    }
+  }
+
+  // Opens a past map on the result screen.
+  function viewPast(m) {
+    viewing = m;
+    contId = m.cont;
+    run = { cont: m.cont, current: null, result: m.result, order: [], slots: m.slots, lines: {}, taps: m.taps, fills: m.fills };
+    loadGrid();
+    showResult(false);
+  }
+
   // ---------- Game flow ----------
 
   function setState(s) {
@@ -865,6 +970,7 @@
   }
 
   function startDrawing(fresh) {
+    viewing = null;
     if (fresh || !run || run.cont !== contId) {
       run = { cont: contId, current: null, result: null, order: [], slots: [], lines: {}, taps: {}, fills: null };
     }
@@ -907,12 +1013,19 @@
     if (fresh && total > prevBest) {
       try { localStorage.setItem(`${BEST_KEY}:${run.cont}`, String(total)); } catch (e) {}
     }
+    if (fresh) addToHistory();
     setState("result");
+    el.endTitle.textContent = viewing ? `Your map from ${dateOf(viewing)}` : "Your map ✏️";
+    el.changeCont.textContent = viewing ? "Back" : "Change continent";
+    // how your maps of this continent have gone, up to this one
+    const past = loadHistory().filter((m) => m.cont === run.cont);
+    const upTo = viewing ? past.slice(0, past.findIndex((m) => m.id === viewing.id) + 1) : past;
+    el.trend.textContent = upTo.length > 1 ? `Your maps of ${cont().name}: ${upTo.slice(-6).map(pctOf).join("% → ")}%` : "";
     const pct = Math.round((100 * total) / max);
     const n = Object.keys(scores).length, drawn = Object.values(scores).filter((s) => s.drawn).length;
     el.finalScore.textContent = `${pct}%`;
     el.finalPct.textContent = `${total} of ${max} points · you drew ${drawn} of ${n} countries` +
-      (fresh && total > prevBest && prevBest ? " — a new best!" : prevBest ? ` · Your best: ${Math.max(prevBest, total)}` : "");
+      (fresh && total > prevBest && prevBest ? " — a new best!" : prevBest && !viewing ? ` · Your best: ${Math.max(prevBest, total)}` : "");
     el.pickInfo.className = "info";
     el.pickInfo.textContent = "Tap a country on the map to see how you did.";
 
@@ -951,6 +1064,7 @@
   }
 
   function showStart() {
+    viewing = null;
     run = null; owner = null; grid = null;
     save();
     setState("start");
@@ -977,6 +1091,7 @@
     }
     const best = bestFor(contId);
     el.startBest.textContent = best ? `Your best on ${cont().name}: ${best} points` : "";
+    renderPast();
   }
 
   // ---------- Controls ----------
@@ -994,6 +1109,9 @@
       const to = a.t === "fill" ? 0 : a.v;
       for (const i of a.cells) owner[i] = to;
       counts[a.v] += a.t === "fill" ? -a.cells.length : a.cells.length;
+    } else if (a.t === "carve") {
+      for (const i of a.cells) owner[i] = a.from;
+      counts[a.v] -= a.cells.length; counts[a.from] += a.cells.length;
     } else if (a.t === "clear") {
       run.lines[code] = a.lines;
       if (a.tap) run.taps[code] = a.tap;

@@ -83,10 +83,14 @@ coastline with no borders and no names. Then, one country at a time:
    already count as borders, so for a coastal country a line from one point
    on the coast to another is enough, and next to a country you've drawn you
    only draw the part that isn't there yet. A line that ends just short of
-   the coast or a border snaps onto it.
+   the coast or a border snaps onto it, and one that ends near where it
+   started closes into a loop.
 3. **Tap inside it to fill it** — like a paint bucket, the fill stops at the
    coast, your lines and the countries already drawn. Islands and other
-   pieces: tap each one. Tap a filled piece again to remove it; if a fill
+   pieces: tap each one. Tap a filled piece again to remove it. To put a
+   country inside one you've already filled (Lesotho in South Africa), or to
+   move a border you got wrong, draw the border through the filled country
+   and tap the part that's the new one — it's taken over. If a fill
    spills out through a border you haven't drawn yet, Undo, draw the
    missing bit and tap again. Microstates that are only dots on this map
    (Andorra, Liechtenstein, Monaco, San Marino, Vatican City) are placed
@@ -109,6 +113,11 @@ countries you've drawn lets you reopen one to fix it.
   them). Tap a country, or a name in the list, to see its score. Your best
   total is saved for each continent, and a map in progress survives a
   refresh.
+- **Past maps:** every map you score is saved on the device, with your
+  borders. The start screen lists your past maps of the chosen continent
+  with their scores (and your best); tap one to see it again. The result
+  screen shows how your last few maps of that continent went, e.g.
+  "34% → 52% → 61%". When storage fills up, the oldest maps are dropped.
 - **Apple Pencil (iPad):** the first time the Pencil touches the map, the
   game switches to drawing-app rules: the Pencil draws and taps, one finger
   moves the map, two fingers zoom, and a palm resting on the screen never

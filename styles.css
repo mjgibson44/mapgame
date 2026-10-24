@@ -433,6 +433,20 @@ button.link {
 .draw-results span { flex: 1; }
 .draw-results b { font-variant-numeric: tabular-nums; }
 .draw-results .missed b { color: var(--bad); font-weight: 400; }
+/* past maps, on the start screen: date, a bar for the score, the score */
+.past { margin-top: 18px; }
+.past:empty { display: none; }
+.past button {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 4px; border: none;
+  border-radius: 6px; background: none; color: var(--ink); font-size: 14px; text-align: left;
+}
+.past button:hover { background: var(--line); }
+.past button span { width: 96px; flex-shrink: 0; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.past button i { flex: 1; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.past button u { display: block; height: 100%; background: var(--ink); }
+.past button b { width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+.trend { font-size: 13px; color: var(--ink-soft); margin: -8px 0 12px; font-variant-numeric: tabular-nums; }
+.trend:empty { display: none; }
 @media (max-width: 600px) {
   .toolbar { gap: 6px; }
   .toolbar button { padding: 9px 10px; font-size: 14px; }
