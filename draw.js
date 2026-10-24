@@ -2,15 +2,12 @@
 (function () {
   "use strict";
 
-  const RUN_KEY = "mapgame-draw-run-v2"; // the map in progress, so a refresh resumes it
+  const RUN_KEY = "mapgame-draw-run";    // the map in progress, so a refresh resumes it
   const CONT_KEY = "mapgame-draw-continent";
-  const BEST_KEY = "mapgame-draw-best";  // + ":" + continent id (+ ":guided")
-  const STYLE_KEY = "mapgame-draw-style"; // "free" (you name each country) or "guided" (the game does)
+  const BEST_KEY = "mapgame-draw-best";  // + ":" + continent id
   const PEN_KEY = "mapgame-draw-pen";    // "1" once a stylus has been used here
-  const HISTORY_KEY = "mapgame-draw-history"; // every map you've scored, oldest first
   const MAX_ZOOM = 12;                   // how far in you can zoom, relative to the whole continent
-  const GRID_CELLS = 2.5e6;              // the land grid fills and scoring work on
-  const SNAP_PX = 16;                    // a line ending this close to the coast or a border joins it
+  const RASTER = 400;                    // scoring resolution: cells along the longer side
 
   const { lookup, sound } = MapGame;
 
@@ -31,8 +28,6 @@
   const PART_OF = { SOL: "SO" };
   const regionOf = new Map(REGIONS.flatMap((r) => r.codes.map((code) => [code, r.id])));
   const contOf = (code) => regionOf.get(PART_OF[code] || code);
-  // Microstates are only dots on this map: you tap where they are instead.
-  const isDot = (code) => !!MAP_DATA.dots[code];
 
   // ---------- DOM ----------
 
@@ -43,8 +38,6 @@
     toolbar: $("toolbar"), naming: $("naming"), guess: $("guess"), sug: $("suggestions"),
     now: $("drawingNow"), nowName: $("nowName"), undo: $("undoBtn"), clear: $("clearBtn"), next: $("nextBtn"),
     done: $("doneBtn"), feedback: $("feedback"), hint: $("drawHint"), drawnList: $("drawnList"),
-    styles: $("styles"), styleHint: $("styleHint"),
-    pastMaps: $("pastMaps"), endTitle: $("endTitle"), trend: $("trend"),
     end: $("endscreen"), finalScore: $("finalScore"), finalPct: $("finalPct"), showLines: $("showLines"),
     pickInfo: $("pickInfo"), results: $("results"),
     playagain: $("playagain"), changeCont: $("changeCont"),
@@ -60,191 +53,34 @@
   } catch (e) {}
   const cont = () => CONTINENTS.find((c) => c.id === contId);
 
-  // Two ways to play: "free" — you name each country you draw, and nothing
-  // says how many are left; "guided" — the game names every country of the
-  // continent in turn. Each keeps its own best score and past maps.
-  const STYLES = [
-    { id: "free", label: "You name them", hint: "Type each country you draw. Nothing tells you how many are left — knowing when you've drawn them all is part of the game." },
-    { id: "guided", label: "Game names them", hint: "The game gives you every country of the continent, one at a time, each next to ones you've drawn where it can. Your map is scored when you've done them all." },
-  ];
-  let style = "free";
-  try { if (localStorage.getItem(STYLE_KEY) === "guided") style = "guided"; } catch (e) {}
-
-  const bestKey = (id, guided) => `${BEST_KEY}:${id}${guided ? ":guided" : ""}`;
-  function bestFor(id, guided) {
-    try { return Number(localStorage.getItem(bestKey(id, guided))) || 0; } catch (e) { return 0; }
+  function bestFor(id) {
+    try { return Number(localStorage.getItem(`${BEST_KEY}:${id}`)) || 0; } catch (e) { return 0; }
   }
 
-  // run = {
-  //   cont, current: code you're drawing or null, result: null | { total, max, scores },
-  //   order: [codes, as you started them],
-  //   slots: [codes] — owner value v in the grid is slots[v - 1],
-  //   lines: { code: [[[x, y], …], …] } — the borders you drew for it, in map units,
-  //   taps: { code: [x, y] } — where you put each microstate,
-  //   fills: the owner grid, run-length encoded,
-  //   guided: the game names the countries; queue: [codes] it hasn't given you yet
-  // }
+  // run = { cont, order: [codes, as you drew them], drawings: { code: [loop, …] },
+  //         current: code you're drawing or null, result: null | { total, max, scores } }
+  // A loop is a closed outline, as [[x, y], …] in map units.
   let run = null;
   let state = "start"; // "start" | "draw" | "result"
-  let actions = [];    // what you've done to the current country, for Undo
-  let viewing = null;  // a past map you're looking at (from the history), not the current game
   let penMode = false; // a stylus has been used: it draws, and fingers only move the map
   try { penMode = localStorage.getItem(PEN_KEY) === "1"; } catch (e) {}
 
-  const name = (code) => byCode.get(code).name;
-  const linesOf = (code) => run.lines[code] || (run.lines[code] = []);
-  const slotOf = (code) => {
-    let i = run.slots.indexOf(code);
-    if (i < 0) { run.slots.push(code); i = run.slots.length - 1; }
-    return i + 1;
-  };
-
-  // ---------- The land grid ----------
-  //
-  // The continent is rasterized once into a grid of cells, each labelled with
-  // the country it's in. Your countries live in a second grid, `owner`: a
-  // fill floods out from where you tap, through land that's on this
-  // continent, not yet anyone's and not on one of your lines. So the coast,
-  // countries you've already filled and the faded land all act as borders —
-  // you only draw the borders that aren't there yet.
-
-  let grid = null;   // { b, R, W, H, label, codes, fillable }
-  let owner = null;  // Uint8Array: 0 = nobody, v = run.slots[v - 1]
-  let counts = null; // cells owned, per owner value
-
-  const ringCache = new Map();
-  function ringsOf(shape) {
-    if (ringCache.has(shape)) return ringCache.get(shape);
-    const rings = [];
-    let ring = null, x = 0, y = 0, m;
-    const re = /([Ml])([^MlZ]*)/g; // "M x y", then relative "l dx dy", then "Z"
-    while ((m = re.exec(MAP_DATA.shapes[shape].d))) {
-      const n = m[2].trim().split(/\s+/).map(Number);
-      if (m[1] === "M") { [x, y] = n; ring = [[x, y]]; rings.push(ring); }
-      else { x += n[0]; y += n[1]; ring.push([x, y]); }
-    }
-    ringCache.set(shape, rings);
-    return rings;
-  }
-
-  const gridCache = new Map();
-  function gridFor(id) {
-    if (gridCache.has(id)) return gridCache.get(id);
-    const b = VIEWS[id];
-    const R = Math.sqrt(GRID_CELLS / (b.w * b.h)); // cells per map unit
-    const W = Math.ceil(b.w * R), H = Math.ceil(b.h * R);
-    const label = new Uint8Array(W * H);
-    const codes = [null]; // label -> country code; 0 is the sea
-    const idOf = new Map();
-    // each country, filled row by row (even-odd, sampling cell centres)
-    for (const shape of Object.keys(MAP_DATA.shapes)) {
-      const code = PART_OF[shape] || shape;
-      if (!idOf.has(code)) { idOf.set(code, codes.length); codes.push(code); }
-      const v = idOf.get(code);
-      const rows = new Map();
-      for (const ring of ringsOf(shape)) {
-        for (let k = 0; k < ring.length; k++) {
-          const [x1, y1] = ring[k], [x2, y2] = ring[(k + 1) % ring.length];
-          if (y1 === y2) continue;
-          const Y1 = (y1 - b.y) * R, Y2 = (y2 - b.y) * R;
-          const j0 = Math.max(0, Math.ceil(Math.min(Y1, Y2) - 0.5));
-          const j1 = Math.min(H - 1, Math.ceil(Math.max(Y1, Y2) - 0.5) - 1);
-          for (let j = j0; j <= j1; j++) {
-            const X = (x1 - b.x + (((j + 0.5) / R + b.y - y1) * (x2 - x1)) / (y2 - y1)) * R;
-            if (!rows.has(j)) rows.set(j, []);
-            rows.get(j).push(X);
-          }
-        }
-      }
-      for (const [j, xs] of rows) {
-        xs.sort((p, q) => p - q);
-        for (let k = 0; k + 1 < xs.length; k += 2) {
-          const a = Math.max(0, Math.ceil(xs[k] - 0.5)), z = Math.min(W, Math.ceil(xs[k + 1] - 0.5));
-          if (z > a) label.fill(v, j * W + a, j * W + z);
-        }
-      }
-    }
-    // land you can fill: this continent's countries
-    const ok = codes.map((c) => (c && byCode.has(c) && contOf(c) === id ? 1 : 0));
-    const fillable = new Uint8Array(W * H);
-    for (let i = 0; i < label.length; i++) fillable[i] = ok[label[i]];
-    const g = { b, R, W, H, label, codes, fillable };
-    gridCache.set(id, g);
-    return g;
-  }
-
-  function cellOf([x, y]) {
-    const { b, R, W, H } = grid;
-    const cx = Math.floor((x - b.x) * R), cy = Math.floor((y - b.y) * R);
-    return cx < 0 || cy < 0 || cx >= W || cy >= H ? -1 : cy * W + cx;
-  }
-  const cellCentre = (i) => [grid.b.x + ((i % grid.W) + 0.5) / grid.R, grid.b.y + (Math.floor(i / grid.W) + 0.5) / grid.R];
-
-  // Marks every cell a line passes through (8-connected, so a fill can't
-  // squeeze through it).
-  function rasterLines(lines, mask) {
-    const { b, R, W, H } = grid;
-    for (const s of lines) {
-      for (let k = 0; k + 1 < s.length || k === 0; k++) {
-        const [x1, y1] = s[k], [x2, y2] = s[Math.min(k + 1, s.length - 1)];
-        const X1 = (x1 - b.x) * R, Y1 = (y1 - b.y) * R, X2 = (x2 - b.x) * R, Y2 = (y2 - b.y) * R;
-        const n = Math.max(1, Math.ceil(Math.hypot(X2 - X1, Y2 - Y1) * 2));
-        for (let t = 0; t <= n; t++) {
-          const X = Math.floor(X1 + ((X2 - X1) * t) / n), Y = Math.floor(Y1 + ((Y2 - Y1) * t) / n);
-          if (X >= 0 && X < W && Y >= 0 && Y < H) mask[Y * W + X] = 1;
-        }
-        if (s.length < 2) break;
-      }
-    }
-    return mask;
-  }
-
-  function encodeOwner() {
-    const out = [];
-    for (let i = 0; i < owner.length;) {
-      const v = owner[i];
-      let j = i + 1;
-      while (j < owner.length && owner[j] === v) j++;
-      out.push(v, j - i);
-      i = j;
-    }
-    return out.join(",");
-  }
-  function decodeOwner(s) {
-    const a = new Uint8Array(grid.W * grid.H);
-    if (!s) return a;
-    const nums = s.split(",").map(Number);
-    for (let k = 0, i = 0; k + 1 < nums.length; k += 2) { a.fill(nums[k], i, i + nums[k + 1]); i += nums[k + 1]; }
-    return a;
-  }
-  function recount() {
-    counts = new Int32Array(256);
-    for (let i = 0; i < owner.length; i++) counts[owner[i]]++;
-  }
-
   function save() {
-    if (viewing) return; // looking at a past map: the saved game is left alone
     try {
-      if (run) {
-        if (owner) run.fills = encodeOwner();
-        localStorage.setItem(RUN_KEY, JSON.stringify(run));
-      } else localStorage.removeItem(RUN_KEY);
+      if (run) localStorage.setItem(RUN_KEY, JSON.stringify(run));
+      else localStorage.removeItem(RUN_KEY);
     } catch (e) {}
   }
 
-  const hasDrawing = (code) => (isDot(code) ? !!run.taps[code] : counts[slotOf(code)] > 0);
-  const drawnCodes = () => run.order.filter(hasDrawing);
+  const name = (code) => byCode.get(code).name;
+  const loopsOf = (code) => run.drawings[code] || [];
+  const drawnCodes = () => run.order.filter((c) => loopsOf(c).length);
 
   // ---------- Map ----------
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const mapNodes = MapGame.buildMap(el.map);
-  // your countries (a picture of the owner grid), then your lines, above the land
-  const fillsImg = document.createElementNS(SVG_NS, "image");
-  fillsImg.setAttribute("class", "fills");
-  fillsImg.setAttribute("preserveAspectRatio", "none");
-  el.map.appendChild(fillsImg);
-  const ink = document.createElementNS(SVG_NS, "g");
+  const ink = document.createElementNS(SVG_NS, "g"); // your outlines, above the land
   ink.setAttribute("class", "ink");
   el.map.appendChild(ink);
 
@@ -255,10 +91,9 @@
   function setView(v) {
     view = v;
     el.map.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`);
-    // microstate dots and taps stay the same size on screen at any zoom
-    const px = v.w / el.map.clientWidth;
-    for (const dot of el.map.querySelectorAll(".dot")) dot.setAttribute("r", String(4 * px));
-    for (const t of ink.querySelectorAll(".tap")) t.setAttribute("r", String(6 * px));
+    // microstate dots stay the same size on screen at any zoom
+    const r = String((4 * v.w) / el.map.clientWidth);
+    for (const dot of el.map.querySelectorAll(".dot")) dot.setAttribute("r", r);
   }
 
   // While drawing, the map fills the screen below the toolbar; otherwise it
@@ -308,7 +143,6 @@
     const r = el.map.getBoundingClientRect();
     return [view.x + ((clientX - r.left) / r.width) * view.w, view.y + ((clientY - r.top) / r.height) * view.h];
   }
-  const unitsPerPx = () => view.w / el.map.clientWidth;
 
   // While you draw, the continent is one plain landmass and everything else
   // (other continents, Western Sahara, the island microstates) is faded. On
@@ -324,54 +158,7 @@
     }
   }
 
-  // ---------- Your map ----------
-
-  // The owner grid as a picture: each country you've filled is shaded, the
-  // one you're on more strongly, with a dark edge wherever it meets land
-  // that isn't its own. On the result only the edges are drawn.
-  const canvas = document.createElement("canvas");
-  let fillsUrl = null, fillsVersion = 0; // a picture still being made when a newer one starts is dropped
-  function inkRGB() {
-    const probe = document.createElement("span");
-    probe.style.color = "var(--ink)";
-    document.body.appendChild(probe);
-    const m = getComputedStyle(probe).color.match(/\d+/g).map(Number);
-    probe.remove();
-    return m;
-  }
-  function renderFills() {
-    const version = ++fillsVersion;
-    if (!grid || !owner) { fillsImg.removeAttribute("href"); return; }
-    const { W, H, b, fillable } = grid;
-    canvas.width = W; canvas.height = H;
-    const ctx = canvas.getContext("2d");
-    const img = ctx.createImageData(W, H);
-    const px = new Uint32Array(img.data.buffer);
-    const [r, g, bl] = inkRGB();
-    const rgba = (a) => ((a << 24) | (bl << 16) | (g << 8) | r) >>> 0; // little-endian RGBA
-    const cur = run.current && !isDot(run.current) ? run.slots.indexOf(run.current) + 1 : -1;
-    const edgesOnly = state === "result";
-    const EDGE = rgba(edgesOnly ? 235 : 215), CUR = rgba(80), DONE = rgba(34);
-    for (let y = 0; y < H; y++) {
-      for (let x = 0, i = y * W; x < W; x++, i++) {
-        const v = owner[i];
-        if (!v) continue;
-        const edge = (x > 0 && fillable[i - 1] && owner[i - 1] !== v) || (x < W - 1 && fillable[i + 1] && owner[i + 1] !== v) ||
-          (y > 0 && fillable[i - W] && owner[i - W] !== v) || (y < H - 1 && fillable[i + W] && owner[i + W] !== v);
-        if (edge) px[i] = EDGE;
-        else if (!edgesOnly) px[i] = v === cur ? CUR : DONE;
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-    fillsImg.setAttribute("x", b.x); fillsImg.setAttribute("y", b.y);
-    fillsImg.setAttribute("width", W / grid.R); fillsImg.setAttribute("height", H / grid.R);
-    canvas.toBlob((blob) => {
-      if (!blob || version !== fillsVersion) return;
-      if (fillsUrl) URL.revokeObjectURL(fillsUrl);
-      fillsUrl = URL.createObjectURL(blob);
-      fillsImg.setAttribute("href", fillsUrl);
-    });
-  }
+  // ---------- Your outlines ----------
 
   const pointsAttr = (s) => s.map((p) => p.join(",")).join(" ");
   function svgEl(tag, cls, parent) {
@@ -381,19 +168,16 @@
     return n;
   }
 
-  // Your lines for the country you're on, and the microstates you've placed.
-  // No names go on the map.
+  // Each country you've drawn is a group of filled loops; the one you're
+  // drawing now is highlighted. No names go on the map.
   function renderInk() {
     ink.textContent = "";
     if (run) {
-      if (run.current && state === "draw") {
-        for (const s of linesOf(run.current)) svgEl("polyline", "line", ink).setAttribute("points", pointsAttr(s));
+      for (const code of run.order) {
+        const g = svgEl("g", code === run.current ? "shape current" : "shape", ink);
+        g.setAttribute("data-for", code);
+        for (const loop of loopsOf(code)) svgEl("polygon", "loop", g).setAttribute("points", pointsAttr(loop));
       }
-      for (const [code, [x, y]] of Object.entries(run.taps)) {
-        const c = svgEl("circle", code === run.current ? "tap current" : "tap", ink);
-        c.setAttribute("cx", x); c.setAttribute("cy", y);
-      }
-      if (view) setView(view);
     }
     updateControls();
   }
@@ -401,19 +185,15 @@
   function updateControls() {
     if (!run || state !== "draw") return;
     const cur = run.current;
-    el.naming.hidden = !!cur || run.guided;
+    el.naming.hidden = !!cur;
     el.now.hidden = !cur;
     if (cur) el.nowName.textContent = name(cur);
-    el.undo.disabled = !actions.length;
-    el.clear.disabled = !cur || (!linesOf(cur).length && !hasDrawing(cur));
-    el.next.disabled = !cur;
-    // given a country you'd rather not draw, Next skips it
-    el.next.textContent = run.guided && cur && !hasDrawing(cur) ? "Skip ›" : "Next country ›";
+    el.undo.disabled = !cur || !loopsOf(cur).length;
+    el.clear.disabled = el.undo.disabled;
+    el.next.disabled = !cur; // with nothing drawn, it just puts the country down
     const drawn = drawnCodes();
     el.done.disabled = !drawn.length;
-    const total = cont().codes.length;
-    el.score.textContent = run.guided ? `${total - run.queue.length} of ${total}`
-      : drawn.length ? `${drawn.length} drawn` : "";
+    el.score.textContent = drawn.length ? `${drawn.length} drawn` : "";
 
     // the countries you've drawn so far — tap one to fix it
     el.drawnList.hidden = !run.order.length;
@@ -432,180 +212,16 @@
     el.feedback.textContent = text;
   }
 
-  // ---------- Drawing a country ----------
-
-  // A line that ends just short of the coast, the edge of a country or
-  // another of your lines is extended to meet it, so the fill can't leak
-  // through the gap; a line that ends near where it started closes into a
-  // loop.
-  function snapEnds(stroke) {
-    const first = stroke[0], last = stroke[stroke.length - 1];
-    if (stroke.length > 4 && Math.hypot(last[0] - first[0], last[1] - first[1]) < 2.5 * SNAP_PX * unitsPerPx()) {
-      stroke.push(first.slice());
-      return stroke;
-    }
-    const others = rasterLines(linesOf(run.current), new Uint8Array(grid.W * grid.H));
-    const reach = Math.ceil(SNAP_PX * unitsPerPx() * grid.R);
-    const nearest = (p) => {
-      const i = cellOf(p);
-      if (i < 0 || !grid.fillable[i] || others[i]) return null; // already over the sea or a line
-      // inside open land, the edge is the coast or a country; inside a
-      // country, it's the edge of that country
-      const inside = owner[i];
-      const blocks = (j) => !grid.fillable[j] || owner[j] !== inside || others[j];
-      const cx = i % grid.W, cy = Math.floor(i / grid.W);
-      let best = null, bestD = Infinity;
-      for (let dy = -reach; dy <= reach; dy++) {
-        const y = cy + dy;
-        if (y < 0 || y >= grid.H) continue;
-        for (let dx = -reach; dx <= reach; dx++) {
-          const x = cx + dx, d = dx * dx + dy * dy;
-          if (x < 0 || x >= grid.W || d >= bestD || d > reach * reach) continue;
-          if (blocks(y * grid.W + x)) { bestD = d; best = y * grid.W + x; }
-        }
-      }
-      return best === null ? null : cellCentre(best).map(round);
-    };
-    const a = nearest(stroke[0]), z = nearest(stroke[stroke.length - 1]);
-    if (a) stroke.unshift(a);
-    if (z) stroke.push(z);
-    return stroke;
-  }
-
-  // Tap inside the country: floods the land your lines and the borders
-  // around it enclose. Tapping a piece that's already this country's
-  // removes it.
-  function fillAt(p) {
-    const code = run.current, v = slotOf(code);
-    const start = cellOf(p);
-    if (start < 0 || !grid.fillable[start]) {
-      say(`That isn't land in ${cont().name} — tap inside ${name(code)}.`, "err");
-      return;
-    }
-    const was = owner[start];
-    const { W, H, fillable } = grid;
-    const lines = rasterLines(linesOf(code), new Uint8Array(W * H));
-    if (was !== v && lines[start]) { say("That's right on one of your lines — tap a little inside it."); return; }
-    const N = W * H;
-    const around = (i) => {
-      const x = i % W;
-      return [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i >= W ? i - W : -1, i + W < N ? i + W : -1];
-    };
-    if (was && was !== v) {
-      // Tapped inside a country you've already drawn: the part of it your
-      // lines cut off (Lesotho inside South Africa, or a corrected border)
-      // becomes this country.
-      const other = run.slots[was - 1];
-      const seen = new Uint8Array(N), part = [], stack = [start];
-      seen[start] = 1;
-      let whole = 0, onLines = 0;
-      while (stack.length) { // the whole piece of the other country, noting the part your lines enclose
-        const i = stack.pop();
-        whole++;
-        if (lines[i]) onLines++;
-        for (const j of around(i)) if (j >= 0 && !seen[j] && owner[j] === was) { seen[j] = 1; stack.push(j); }
-      }
-      seen.fill(0);
-      seen[start] = 1;
-      stack.push(start);
-      while (stack.length) {
-        const i = stack.pop();
-        part.push(i);
-        for (const j of around(i)) if (j >= 0 && !seen[j] && owner[j] === was && !lines[j]) { seen[j] = 1; stack.push(j); }
-      }
-      if (part.length + onLines >= whole) {
-        say(`That's ${name(other)}. To give part of it to ${name(code)}, first draw a border across it ` +
-          `(or a loop inside it), then tap the part that's ${name(code)}.`, "err");
-        return;
-      }
-      for (const i of part) owner[i] = v;
-      for (const i of part.slice()) {
-        for (const j of around(i)) if (j >= 0 && lines[j] && owner[j] === was) { owner[j] = v; part.push(j); }
-      }
-      counts[was] -= part.length; counts[v] += part.length;
-      actions.push({ t: "carve", v, from: was, cells: Int32Array.from(part) });
-      say(`Took that part from ${name(other)}. More pieces? Draw and tap them too. Then “Next country”.`);
-      changed();
-      return;
-    }
-    // floods from `from` through cells that pass `ok`, giving them to `to`
-    const cells = [];
-    const flood = (from, ok, to) => {
-      const stack = [from];
-      owner[from] = to;
-      while (stack.length) {
-        const i = stack.pop();
-        cells.push(i);
-        for (const j of around(i)) if (j >= 0 && ok(j)) { owner[j] = to; stack.push(j); }
-      }
-    };
-    if (was) {
-      flood(start, (i) => owner[i] === v, 0);
-    } else {
-      // A line passing close to a border without touching it leaves a pinhole
-      // a fill would leak through. So first flood only cells at least GAP
-      // cells from any border (sealing those), then grow back GAP cells to
-      // reach the borders.
-      const GAP = 1;
-      const free = (i) => fillable[i] && !owner[i] && !lines[i];
-      let near = new Uint8Array(N);
-      for (let i = 0; i < N; i++) near[i] = free(i) ? 0 : 1;
-      for (let k = 0; k < GAP; k++) {
-        const next = near.slice();
-        for (let i = 0; i < N; i++) if (near[i]) for (const j of around(i)) if (j >= 0) next[j] = 1;
-        near = next;
-      }
-      let seed = start;
-      if (near[seed]) { // tapped close to a border: start from the nearest open cell
-        seed = -1;
-        const cx = start % W, cy = Math.floor(start / W);
-        for (let r = 1; r <= 2 * GAP + 2 && seed < 0; r++) {
-          for (let dy = -r; dy <= r && seed < 0; dy++) for (let dx = -r; dx <= r; dx++) {
-            const x = cx + dx, y = cy + dy, i = y * W + x;
-            if (x >= 0 && y >= 0 && x < W && y < H && !near[i] && free(i)) { seed = i; break; }
-          }
-        }
-      }
-      if (seed < 0) flood(start, free, v); // a sliver too thin to seal: fill it as it is
-      else {
-        flood(seed, (i) => !near[i] && free(i), v);
-        let edge = cells.slice();
-        for (let k = 0; k < GAP; k++) {
-          const grown = [];
-          for (const i of edge) for (const j of around(i)) if (j >= 0 && free(j)) { owner[j] = v; grown.push(j); cells.push(j); }
-          edge = grown;
-        }
-      }
-      // your line is the border: its cells next to the fill join the country
-      for (const i of cells.slice()) {
-        for (const j of around(i)) if (j >= 0 && lines[j] && fillable[j] && !owner[j]) { owner[j] = v; cells.push(j); }
-      }
-    }
-    counts[v] += was ? -cells.length : cells.length;
-    actions.push({ t: was ? "unfill" : "fill", v, cells: Int32Array.from(cells) });
-    say(was ? `Removed that piece of ${name(code)}.`
-      : `Filled. More pieces? Draw and tap them too. Then “Next country”.`);
-    changed();
-  }
-
-  function changed() {
-    disarmDone();
-    save();
-    renderFills();
-    renderInk();
-  }
-
   // ---------- Choosing a country ----------
 
-  // Done with the current country: forget it if nothing was filled or placed.
+  // Done with the current country: forget it if nothing was drawn.
   function putDown() {
     const cur = run.current;
-    if (cur && !hasDrawing(cur)) {
+    if (cur && !loopsOf(cur).length) {
+      delete run.drawings[cur];
       run.order = run.order.filter((c) => c !== cur);
-      delete run.lines[cur];
     }
     run.current = null;
-    actions = [];
   }
 
   function choose(c) {
@@ -615,94 +231,31 @@
       wiggle();
       return;
     }
-    if (c.code === run.current) return;
     disarmDone();
-    // guided: reopening an earlier country puts the one you were given back first in line
-    if (run.guided && run.current && !hasDrawing(run.current)) run.queue.unshift(run.current);
     putDown();
     run.current = c.code;
-    const fresh = !run.order.includes(c.code);
-    if (fresh) run.order.push(c.code);
-    if (isDot(c.code)) {
-      say(`${c.name} is too small to draw on this map — tap where it is.`);
-    } else if (fresh) {
-      say(`Draw ${c.name}'s borders that aren't on the map yet — coast to coast, or up to a country you've ` +
-        `drawn — then tap inside it to fill it.`);
+    if (!run.drawings[c.code]) {
+      run.drawings[c.code] = [];
+      run.order.push(c.code);
+      say(`Draw ${c.name}: loop around it. In pieces? Draw a loop for each. Then “Next country”.`);
     } else {
-      say(`Fixing ${c.name}: tap a piece of it to remove it, or draw and tap to add more.`);
+      say(`Fixing ${c.name}: add loops, or Clear to start it again.`);
     }
     el.guess.value = "";
     closeSuggestions();
     el.guess.blur();
     save();
-    renderFills();
     renderInk();
   }
 
   function nextCountry() {
-    const cur = run.current;
-    if (!cur) return;
-    if (!isDot(cur) && linesOf(cur).length && !hasDrawing(cur)) {
-      say(`Tap inside ${name(cur)} to fill it first — or Clear to drop it.`, "err");
-      return;
-    }
+    if (!run.current) return;
     putDown();
-    if (run.guided) { giveNext(); return; }
     say(`${drawnCodes().length} drawn. Which one next? When you think you've drawn them all, score your map.`);
     save();
-    renderFills();
     renderInk();
     // on a touch screen, don't pop up the keyboard over the map unasked
     if (!window.matchMedia("(pointer: coarse)").matches) el.guess.focus();
-  }
-
-  // Guided: the order the game gives countries in. It starts on a random
-  // country and walks from neighbour to neighbour: next is one bordering
-  // the latest country given, or else the one before it, and so on — so the
-  // borders you've drawn keep helping and you work across the continent
-  // rather than jumping around it. Microstates count as bordering the
-  // country they sit in.
-  function guidedOrder() {
-    const { W, H, label, codes } = grid;
-    const here = new Set(cont().codes);
-    const adj = new Map(cont().codes.map((c) => [c, new Set()]));
-    const link = (a, b) => { if (a !== b && here.has(a) && here.has(b)) { adj.get(a).add(b); adj.get(b).add(a); } };
-    for (let y = 0; y < H; y++) {
-      for (let x = 0, i = y * W; x < W; x++, i++) {
-        if (x < W - 1 && label[i] !== label[i + 1]) link(codes[label[i]], codes[label[i + 1]]);
-        if (y < H - 1 && label[i] !== label[i + W]) link(codes[label[i]], codes[label[i + W]]);
-      }
-    }
-    for (const c of cont().codes) {
-      if (!isDot(c)) continue;
-      const i = cellOf(MAP_DATA.dots[c]);
-      if (i >= 0) link(c, codes[label[i]]);
-    }
-    const left = new Set(cont().codes), order = [];
-    const pick = (list) => list[Math.floor(Math.random() * list.length)];
-    while (left.size) {
-      let next = null;
-      for (let k = order.length - 1; k >= 0 && !next; k--) {
-        const near = [...adj.get(order[k])].filter((c) => left.has(c));
-        if (near.length) next = pick(near);
-      }
-      // to start, or on reaching an island: a fresh random country (not a microstate)
-      if (!next) { const big = [...left].filter((c) => !isDot(c)); next = pick(big.length ? big : [...left]); }
-      order.push(next);
-      left.delete(next);
-    }
-    return order;
-  }
-
-  // Guided: gives you the next country, or scores the map when there are none left.
-  function giveNext() {
-    if (!run.queue.length) {
-      run.result = scoreMap();
-      save();
-      showResult(true);
-      return;
-    }
-    choose(byCode.get(run.queue.shift()));
   }
 
   function wiggle() {
@@ -757,12 +310,11 @@
 
   // ---------- Pointer input ----------
   //
-  // Mouse: drag draws a line, a click fills; Shift-drag or a right/middle
-  // button drag moves the map, and the wheel zooms. Touch: one finger draws
-  // or taps, two move and zoom. Once a stylus (Apple Pencil) is used, the
-  // stylus draws and taps and fingers only move and zoom the map — so a palm
-  // resting on the screen never draws. Until you've said which country
-  // you're drawing, any drag moves the map.
+  // Mouse: drag draws; Shift-drag or a right/middle-button drag moves the
+  // map, and the wheel zooms. Touch: one finger draws, two move and zoom.
+  // Once a stylus (Apple Pencil) is used, the stylus draws and fingers only
+  // move and zoom the map — so a palm resting on the screen never draws.
+  // Until you've said which country you're drawing, any drag moves the map.
 
   const pointers = new Map(); // pointerId -> { x, y, type }
   let gesture = null;
@@ -800,9 +352,10 @@
     if (moveMap) {
       gesture = { kind: "pan", id: e.pointerId, from: at, start: [e.clientX, e.clientY], tap: true };
     } else {
-      const line = [at.map(round)];
-      gesture = { kind: "draw", id: e.pointerId, pen: e.pointerType === "pen", touch: e.pointerType === "touch", line,
-                  node: svgEl("polyline", "line", ink), last: [e.clientX, e.clientY], moved: 0 };
+      const loop = [at.map(round)];
+      const group = ink.querySelector(".shape.current") || ink;
+      gesture = { kind: "draw", id: e.pointerId, pen: e.pointerType === "pen", loop,
+                  node: svgEl("polyline", "stroke", group), last: [e.clientX, e.clientY], moved: 0 };
     }
   });
 
@@ -837,9 +390,9 @@
       if (d < 1.5) continue;
       gesture.moved += d;
       gesture.last = [ev.clientX, ev.clientY];
-      gesture.line.push(toMap(ev.clientX, ev.clientY).map(round));
+      gesture.loop.push(toMap(ev.clientX, ev.clientY).map(round));
     }
-    gesture.node.setAttribute("points", pointsAttr(gesture.line));
+    gesture.node.setAttribute("points", pointsAttr(gesture.loop));
   });
 
   function pointerEnd(e, cancelled) {
@@ -856,22 +409,11 @@
     gesture = null;
     if (g.kind === "draw") {
       g.node.remove();
-      if (cancelled) return;
-      const code = run.current;
-      if (g.moved < (g.touch ? 8 : 3)) {
-        // a tap: fill (or place a microstate)
-        if (isDot(code)) {
-          actions.push({ t: "tap", prev: run.taps[code] || null });
-          run.taps[code] = g.line[0];
-          say(`Placed ${name(code)}. Tap again to move it, or “Next country”.`);
-          changed();
-        } else fillAt(g.line[0]);
-        return;
-      }
-      if (isDot(code)) { say(`${name(code)} is too small to draw — just tap where it is.`); return; }
-      linesOf(code).push(snapEnds(g.line));
-      actions.push({ t: "line" });
-      changed();
+      if (cancelled || g.moved < 12 || g.loop.length < 3) return;
+      run.drawings[run.current].push(g.loop); // closed into a loop
+      disarmDone();
+      save();
+      renderInk();
     } else if (g.tap && !cancelled && state === "result") {
       pickAt(e.clientX, e.clientY); // a tap on the result: which country is that?
     } else if (g.tap && !cancelled && state === "draw" && !run.current) {
@@ -897,114 +439,124 @@
   function updateHint() {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     el.hint.textContent = penMode
-      ? "Apple Pencil draws and taps. One finger moves the map, two fingers zoom."
+      ? "Apple Pencil draws. One finger moves the map, two fingers zoom."
       : coarse
-        ? "One finger draws and taps; two fingers move and zoom. With an Apple Pencil, the Pencil draws and fingers move the map."
-        : "Drag to draw a border, click to fill. Scroll to zoom; Shift-drag or right-drag to move the map.";
+        ? "One finger draws; two fingers move and zoom. With an Apple Pencil, the Pencil draws and fingers move the map."
+        : "Drag to draw. Scroll to zoom; Shift-drag or right-drag to move the map.";
   }
 
   // ---------- Scoring ----------
-  //
-  // Each country's filled area is compared with the real country, cell by
-  // cell on the land grid: the overlap divided by the combined area
-  // (intersection over union). 90% overlap or better is full marks, with a
-  // gentle curve below that; countries you didn't draw score 0.
 
+  // Each outline is compared with the real country by rasterizing both on a
+  // canvas, keeping only land: the overlap divided by the combined area
+  // (intersection over union). Drawing over the sea costs nothing; drawing
+  // over a neighbour, or missing part of the country, does.
+  const pathCache = new Map();
+  const pathOf = (shape) => {
+    if (!pathCache.has(shape)) pathCache.set(shape, new Path2D(MAP_DATA.shapes[shape].d));
+    return pathCache.get(shape);
+  };
+  const shapesOf = (code) => Object.keys(MAP_DATA.shapes).filter((s) => (PART_OF[s] || s) === code);
+  const boxCache = new Map();
+  function shapeBox(shape) {
+    if (boxCache.has(shape)) return boxCache.get(shape);
+    // paths are "M x y", then relative "l dx dy" segments, then "Z"
+    const re = /([Ml])([^MlZ]*)/g;
+    let m, x = 0, y = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    while ((m = re.exec(MAP_DATA.shapes[shape].d))) {
+      const n = m[2].trim().split(/\s+/).map(Number);
+      if (m[1] === "M") [x, y] = n;
+      else { x += n[0]; y += n[1]; }
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    const b = { minX, minY, maxX, maxY };
+    boxCache.set(shape, b);
+    return b;
+  }
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+  function overlap(code, loops) {
+    const cb = cont().box;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of [...loops.flat(), ...shapesOf(code).flatMap((s) => {
+      const b = shapeBox(s);
+      return [[b.minX, b.minY], [b.maxX, b.maxY]];
+    })]) {
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    // only the part of the map this continent shows
+    minX = Math.max(minX, cb.x); minY = Math.max(minY, cb.y);
+    maxX = Math.min(maxX, cb.x + cb.w); maxY = Math.min(maxY, cb.y + cb.h);
+    if (maxX <= minX || maxY <= minY) return 0;
+    const scale = RASTER / Math.max(maxX - minX, maxY - minY);
+    const W = Math.max(1, Math.ceil((maxX - minX) * scale)), H = Math.max(1, Math.ceil((maxY - minY) * scale));
+    canvas.width = W; canvas.height = H;
+
+    function layer(paint) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      ctx.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale);
+      ctx.fillStyle = "#000";
+      paint();
+      return ctx.getImageData(0, 0, W, H).data;
+    }
+    const land = layer(() => {
+      for (const s of Object.keys(MAP_DATA.shapes)) {
+        const b = shapeBox(s);
+        if (b.maxX >= minX && b.minX <= maxX && b.maxY >= minY && b.minY <= maxY) ctx.fill(pathOf(s));
+      }
+    });
+    // evenodd: holes such as Lesotho stay out
+    const truth = layer(() => { for (const s of shapesOf(code)) ctx.fill(pathOf(s), "evenodd"); });
+    const drawn = layer(() => {
+      for (const loop of loops) {
+        ctx.beginPath();
+        loop.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.closePath();
+        ctx.fill();
+      }
+    });
+    let inter = 0, union = 0;
+    for (let i = 3; i < land.length; i += 4) {
+      const T = truth[i] >= 128, D = drawn[i] >= 128 && land[i] >= 128;
+      if (T && D) inter++;
+      if (T || D) union++;
+    }
+    return union ? inter / union : 0;
+  }
+
+  // Points out of 100. A freehand outline never matches exactly, so 90%
+  // overlap or better earns full marks, with a gentle curve below that.
   const drawPoints = (iou) => Math.round(100 * Math.pow(Math.min(1, iou / 0.9), 0.75));
 
-  // Microstates: full marks within about 40 km (1 map unit) of where you
-  // tapped, nothing beyond about 400 km.
-  function dotPoints(code, [x, y]) {
+  // Microstates are dots on this map: they're scored on where your loop is
+  // centred — full marks within about 40 km (1 map unit), nothing beyond
+  // about 400 km.
+  function dotPoints(code, loops) {
+    const pts = loops.flat();
+    const x = pts.reduce((s, p) => s + p[0], 0) / pts.length, y = pts.reduce((s, p) => s + p[1], 0) / pts.length;
     const [dx, dy] = MAP_DATA.dots[code];
     return Math.round(100 * Math.max(0, Math.min(1, 1 - (Math.hypot(x - dx, y - dy) - 1) / 9)));
   }
 
   function scoreMap() {
-    const { label, codes } = grid;
-    const realN = new Map(), mineN = new Map(), both = new Map();
-    const add = (m, k) => m.set(k, (m.get(k) || 0) + 1);
-    for (let i = 0; i < label.length; i++) {
-      const real = codes[label[i]], v = owner[i];
-      if (real) add(realN, real);
-      if (v) {
-        const mine = run.slots[v - 1];
-        add(mineN, mine);
-        if (mine === real) add(both, mine);
-      }
-    }
     const scores = {};
     let total = 0;
     for (const code of cont().codes) {
+      const loops = loopsOf(code);
       let s;
-      if (isDot(code)) s = run.taps[code] ? { pts: dotPoints(code, run.taps[code]), drawn: true } : { pts: 0, drawn: false };
-      else if (!mineN.get(code)) s = { pts: 0, drawn: false };
+      if (!loops.length) s = { pts: 0, drawn: false };
+      else if (MAP_DATA.dots[code]) s = { pts: dotPoints(code, loops), drawn: true };
       else {
-        const inter = both.get(code) || 0;
-        const iou = inter / (mineN.get(code) + (realN.get(code) || 0) - inter);
+        const iou = overlap(code, loops);
         s = { pts: drawPoints(iou), overlap: Math.round(100 * iou), drawn: true };
       }
       scores[code] = s;
       total += s.pts;
     }
     return { total, max: cont().codes.length * 100, scores };
-  }
-
-  // ---------- Past maps ----------
-  //
-  // Every map you score is kept on this device, with your borders, so you
-  // can look back and see how you're improving. A map is ~50–150 KB; when
-  // storage runs out the oldest ones go.
-
-  function loadHistory() {
-    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch (e) { return []; }
-  }
-
-  function addToHistory() {
-    const list = loadHistory();
-    list.push({
-      id: Date.now(), date: new Date().toISOString(), cont: run.cont, guided: !!run.guided, result: run.result,
-      slots: run.slots, taps: run.taps, fills: run.fills,
-    });
-    while (list.length) {
-      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); return; } catch (e) { list.shift(); }
-    }
-  }
-
-  const pctOf = (m) => Math.round((100 * m.result.total) / m.result.max);
-  const dateOf = (m) => new Date(m.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-
-  // The start screen's list of past maps for the chosen continent, newest
-  // first, each with a bar for its score.
-  function renderPast() {
-    const mine = loadHistory().filter((m) => m.cont === contId && !!m.guided === (style === "guided")).reverse();
-    el.pastMaps.textContent = "";
-    if (!mine.length) return;
-    const head = document.createElement("div");
-    head.className = "areas-label";
-    const best = Math.max(...mine.map(pctOf));
-    head.textContent = `Your past maps of ${cont().name}${style === "guided" ? " (game names them)" : ""} · best ${best}%`;
-    el.pastMaps.appendChild(head);
-    for (const m of mine) {
-      const row = document.createElement("button");
-      const drawn = Object.values(m.result.scores).filter((x) => x.drawn).length;
-      row.innerHTML = "<span></span><i><u></u></i><b></b>";
-      row.children[0].textContent = dateOf(m);
-      row.children[1].firstChild.style.width = `${pctOf(m)}%`;
-      row.children[2].textContent = `${pctOf(m)}%`;
-      row.title = `${m.result.total} of ${m.result.max} points · ${drawn} of ${Object.keys(m.result.scores).length} countries drawn`;
-      row.addEventListener("click", () => viewPast(m));
-      el.pastMaps.appendChild(row);
-    }
-  }
-
-  // Opens a past map on the result screen.
-  function viewPast(m) {
-    viewing = m;
-    contId = m.cont;
-    run = { cont: m.cont, current: null, result: m.result, order: [], slots: m.slots, lines: {}, taps: m.taps, fills: m.fills,
-            guided: !!m.guided, queue: [] };
-    loadGrid();
-    showResult(false);
   }
 
   // ---------- Game flow ----------
@@ -1018,10 +570,9 @@
     el.hint.hidden = s !== "draw";
     el.feedback.hidden = s !== "draw";
     el.drawnList.hidden = s !== "draw" || !run.order.length;
-    fillsImg.classList.toggle("faded", s === "result" && !el.showLines.checked);
+    ink.classList.toggle("faded", s === "result" && !el.showLines.checked);
     ink.classList.toggle("result", s === "result");
     paintMap();
-    renderFills();
     renderInk();
     renderHeader();
     view = null;
@@ -1030,34 +581,19 @@
 
   function renderHeader() {
     el.title.innerHTML = state === "start" ? "Border Draw" : `Border Draw<small>${cont().name}</small>`;
-    if (state === "result") el.score.textContent = `${run.result.total} / ${run.result.max}`;
-    else if (state === "draw") updateControls(); // it keeps the count up to date
-    else el.score.textContent = "";
-  }
-
-  function loadGrid() {
-    grid = gridFor(run.cont);
-    owner = decodeOwner(run.fills);
-    recount();
+    el.score.textContent = state === "result" ? `${run.result.total} / ${run.result.max}`
+      : state === "draw" && drawnCodes().length ? `${drawnCodes().length} drawn` : "";
   }
 
   function startDrawing(fresh) {
-    viewing = null;
-    if (fresh || !run || run.cont !== contId) {
-      run = { cont: contId, current: null, result: null, order: [], slots: [], lines: {}, taps: {}, fills: null,
-              guided: style === "guided", queue: null };
-    }
-    actions = [];
-    loadGrid();
-    if (run.guided && !run.queue) run.queue = guidedOrder();
+    if (fresh || !run || run.cont !== contId) run = { cont: contId, order: [], drawings: {}, current: null, result: null };
     save();
     updateHint();
     window.scrollTo(0, 0);
     setState("draw");
     if (run.current) say(`Drawing ${name(run.current)}.`);
-    else if (run.guided) giveNext();
     else say(run.order.length ? `${drawnCodes().length} drawn. Which one next?`
-      : "Type the country you're going to draw first.");
+      : "Type the country you're going to draw first, then draw its outline on the map.");
   }
 
   // Scoring can't be undone, so "Score my map" asks for a second tap.
@@ -1071,36 +607,33 @@
     if (!drawnCodes().length) return;
     if (!el.done.classList.contains("armed")) {
       el.done.classList.add("armed");
-      el.done.textContent = run.guided && run.queue.length ? "Finish early? Tap again" : "Drawn them all? Tap again";
+      el.done.textContent = "Drawn them all? Tap again";
       armTimer = setTimeout(disarmDone, 4000);
       return;
     }
     disarmDone();
     putDown();
-    run.result = scoreMap();
-    save();
-    showResult(true);
+    el.done.textContent = "Scoring…";
+    el.done.disabled = true;
+    setTimeout(() => {                 // let "Scoring…" paint first
+      run.result = scoreMap();
+      save();
+      showResult(true);
+    }, 30);
   });
 
   function showResult(fresh) {
     const { total, max, scores } = run.result;
-    const prevBest = bestFor(run.cont, run.guided);
+    const prevBest = bestFor(run.cont);
     if (fresh && total > prevBest) {
-      try { localStorage.setItem(bestKey(run.cont, run.guided), String(total)); } catch (e) {}
+      try { localStorage.setItem(`${BEST_KEY}:${run.cont}`, String(total)); } catch (e) {}
     }
-    if (fresh) addToHistory();
     setState("result");
-    el.endTitle.textContent = viewing ? `Your map from ${dateOf(viewing)}` : "Your map ✏️";
-    el.changeCont.textContent = viewing ? "Back" : "Change continent";
-    // how your maps of this continent have gone, up to this one
-    const past = loadHistory().filter((m) => m.cont === run.cont && !!m.guided === !!run.guided);
-    const upTo = viewing ? past.slice(0, past.findIndex((m) => m.id === viewing.id) + 1) : past;
-    el.trend.textContent = upTo.length > 1 ? `Your maps of ${cont().name}: ${upTo.slice(-6).map(pctOf).join("% → ")}%` : "";
     const pct = Math.round((100 * total) / max);
     const n = Object.keys(scores).length, drawn = Object.values(scores).filter((s) => s.drawn).length;
     el.finalScore.textContent = `${pct}%`;
     el.finalPct.textContent = `${total} of ${max} points · you drew ${drawn} of ${n} countries` +
-      (fresh && total > prevBest && prevBest ? " — a new best!" : prevBest && !viewing ? ` · Your best: ${Math.max(prevBest, total)}` : "");
+      (fresh && total > prevBest && prevBest ? " — a new best!" : prevBest ? ` · Your best: ${Math.max(prevBest, total)}` : "");
     el.pickInfo.className = "info";
     el.pickInfo.textContent = "Tap a country on the map to see how you did.";
 
@@ -1125,22 +658,24 @@
     if (code && contOf(code) === contId) pick(PART_OF[code] || code);
   }
 
+  // Highlights a country on the result, with your outline for it.
   function pick(code) {
     for (const node of el.map.querySelectorAll(".picked")) node.classList.remove("picked");
     for (const [c, node] of mapNodes) if ((PART_OF[c] || c) === code) {
       node.classList.add("picked");
-      node.parentNode.insertBefore(node, fillsImg); // on top, so its whole outline shows
+      node.parentNode.insertBefore(node, ink); // on top, so its whole outline shows
     }
+    const mine = ink.querySelector(`[data-for="${code}"]`);
+    if (mine) mine.classList.add("picked");
     const s = run.result.scores[code];
     el.pickInfo.className = s.pts >= 50 ? "ok" : "err";
     el.pickInfo.textContent = !s.drawn ? `${name(code)}: not drawn — 0 points`
       : s.overlap === undefined ? `${name(code)}: ${s.pts} points, for where you put it`
-      : `${name(code)}: ${s.pts} points — your area overlaps it ${s.overlap}%`;
+      : `${name(code)}: ${s.pts} points — your outline overlaps it ${s.overlap}% (on land)`;
   }
 
   function showStart() {
-    viewing = null;
-    run = null; owner = null; grid = null;
+    run = null;
     save();
     setState("start");
     renderContinents();
@@ -1164,24 +699,8 @@
       });
       el.conts.appendChild(b);
     }
-    el.styles.textContent = "";
-    for (const st of STYLES) {
-      const b = document.createElement("button");
-      b.setAttribute("role", "radio");
-      b.setAttribute("aria-pressed", String(st.id === style));
-      b.setAttribute("aria-checked", String(st.id === style));
-      b.textContent = st.label;
-      b.addEventListener("click", () => {
-        style = st.id;
-        try { localStorage.setItem(STYLE_KEY, style); } catch (e) {}
-        renderContinents();
-      });
-      el.styles.appendChild(b);
-    }
-    el.styleHint.textContent = STYLES.find((st) => st.id === style).hint;
-    const best = bestFor(contId, style === "guided");
+    const best = bestFor(contId);
     el.startBest.textContent = best ? `Your best on ${cont().name}: ${best} points` : "";
-    renderPast();
   }
 
   // ---------- Controls ----------
@@ -1190,40 +709,21 @@
   el.playagain.addEventListener("click", () => startDrawing(true));
   el.changeCont.addEventListener("click", showStart);
   el.undo.addEventListener("click", () => {
-    const a = actions.pop();
-    if (!a) return;
-    const code = run.current;
-    if (a.t === "line") linesOf(code).pop();
-    else if (a.t === "tap") { if (a.prev) run.taps[code] = a.prev; else delete run.taps[code]; }
-    else if (a.t === "fill" || a.t === "unfill") {
-      const to = a.t === "fill" ? 0 : a.v;
-      for (const i of a.cells) owner[i] = to;
-      counts[a.v] += a.t === "fill" ? -a.cells.length : a.cells.length;
-    } else if (a.t === "carve") {
-      for (const i of a.cells) owner[i] = a.from;
-      counts[a.v] -= a.cells.length; counts[a.from] += a.cells.length;
-    } else if (a.t === "clear") {
-      run.lines[code] = a.lines;
-      if (a.tap) run.taps[code] = a.tap;
-      for (const i of a.cells) owner[i] = a.v;
-      counts[a.v] += a.cells.length;
-    }
-    changed();
+    if (!run.current || !loopsOf(run.current).length) return;
+    run.drawings[run.current].pop();
+    disarmDone();
+    save();
+    renderInk();
   });
   el.clear.addEventListener("click", () => {
-    const code = run.current;
-    if (!code) return;
-    const v = slotOf(code), cells = [];
-    for (let i = 0; i < owner.length; i++) if (owner[i] === v) { owner[i] = 0; cells.push(i); }
-    counts[v] = 0;
-    actions.push({ t: "clear", v, cells: Int32Array.from(cells), lines: linesOf(code), tap: run.taps[code] || null });
-    run.lines[code] = [];
-    delete run.taps[code];
-    say(`Cleared ${name(code)}.`);
-    changed();
+    if (!run.current) return;
+    run.drawings[run.current] = [];
+    disarmDone();
+    save();
+    renderInk();
   });
   el.next.addEventListener("click", nextCountry);
-  el.showLines.addEventListener("change", () => fillsImg.classList.toggle("faded", !el.showLines.checked));
+  el.showLines.addEventListener("change", () => ink.classList.toggle("faded", !el.showLines.checked));
   document.addEventListener("keydown", (e) => {
     if (state !== "draw" || e.target.closest("input, textarea")) return;
     if (e.key === "z" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); el.undo.click(); }
@@ -1234,15 +734,14 @@
 
   // Resume a saved map (drawing or scored), or show the start screen.
   try {
-    localStorage.removeItem("mapgame-draw-run"); // the earlier outline-only format
     const saved = JSON.parse(localStorage.getItem(RUN_KEY) || "null");
-    if (saved && VIEWS[saved.cont] && Array.isArray(saved.order) && Array.isArray(saved.slots) &&
-        saved.lines && saved.taps && saved.order.every((c) => byCode.has(c))) {
+    if (saved && VIEWS[saved.cont] && Array.isArray(saved.order) && saved.drawings &&
+        saved.order.every((c) => byCode.has(c))) {
       run = saved;
       contId = saved.cont;
     }
   } catch (e) {}
-  if (run && run.result) { loadGrid(); showResult(false); }
+  if (run && run.result) showResult(false);
   else if (run) startDrawing(false);
   else showStart();
 })();
