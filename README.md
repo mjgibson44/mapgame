@@ -73,11 +73,22 @@ only), and you type the country it's sitting on.
 
 Pick a continent — **Americas**, **Europe**, **Asia** (Australia included)
 or **Africa**, the same areas as Streak Mode — and you get an empty map: its
-coastline with no borders and no names. Then, one country at a time:
+coastline with no borders and no names. There are two ways to play,
+picked on the start screen:
 
-1. **Say which country you'll draw** — type it (3 letters bring up one
-   suggestion, from all 197 countries so it doesn't give away which are on
-   the map).
+- **You name them** — you choose each country you draw by typing its name,
+  and nothing tells you how many are left: knowing when you've drawn them
+  all is part of the game.
+- **Game names them** — the game gives you every country of the continent,
+  one at a time ("12 of 49"), walking from neighbour to neighbour so the
+  borders you've drawn keep helping. Skip one you don't know (it scores 0);
+  the map is scored as soon as you've done them all.
+
+Each keeps its own best score and past maps. Then, one country at a time:
+
+1. **Say which country you'll draw** (in *You name them*) — type it (3
+   letters bring up one suggestion, from all 197 countries so it doesn't
+   give away which are on the map). In *Game names them* it's given to you.
 2. **Draw the borders it still needs** — only the new ones. The coast, the
    faded land of other continents and every country you've already filled
    already count as borders, so for a coastal country a line from one point
@@ -97,10 +108,9 @@ coastline with no borders and no names. Then, one country at a time:
    with a single tap instead.
 4. **Next country.**
 
-Nothing is checked until you press **Score my map**, and nothing tells you
-how many countries are left — knowing when you've drawn them all is part of
-the game. The only borders you see while playing are your own. The row of
-countries you've drawn lets you reopen one to fix it.
+Nothing is checked until you press **Score my map** (or, in *Game names
+them*, until the last country). The only borders you see while playing are
+your own. The row of countries you've drawn lets you reopen one to fix it.
 
 - **Scoring:** each of the continent's countries scores up to 100 points for
   how well the area you filled matches the real country (intersection over
@@ -115,7 +125,7 @@ countries you've drawn lets you reopen one to fix it.
   refresh.
 - **Past maps:** every map you score is saved on the device, with your
   borders. The start screen lists your past maps of the chosen continent
-  with their scores (and your best); tap one to see it again. The result
+  and way of playing, with their scores (and your best); tap one to see it again. The result
   screen shows how your last few maps of that continent went, e.g.
   "34% → 52% → 61%". When storage fills up, the oldest maps are dropped.
 - **Apple Pencil (iPad):** the first time the Pencil touches the map, the

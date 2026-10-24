@@ -33,18 +33,19 @@
         <h2 class="panel-title">Border Draw</h2>
         <p class="rules">
           Pick a continent and you get its coastline — no borders, no names.
-          Say which country you're drawing, draw the borders it still needs,
-          then tap inside it to fill it. Nothing is checked until you score
-          your map.
+          Country by country, draw the borders each one still needs, then tap
+          inside it to fill it. Nothing is checked until you score your map.
         </p>
         <ul class="rules-list">
           <li>The coast and countries you've already drawn count as borders — only draw the <b>new</b> ones</li>
-          <li>Nothing tells you which countries are left — that's up to you</li>
           <li>Each country scores up to <b>100 points</b> for how closely your area matches it; ones you leave out score 0</li>
           <li>Works with Apple Pencil: the Pencil draws, fingers move and zoom the map</li>
         </ul>
         <div class="areas-label" id="contLabel">Continent</div>
         <div class="areas" id="continents" role="radiogroup" aria-labelledby="contLabel"></div>
+        <div class="areas-label" id="styleLabel">How to play</div>
+        <div class="areas" id="styles" role="radiogroup" aria-labelledby="styleLabel"></div>
+        <div class="best-line" id="styleHint"></div>
         <div class="best-line" id="startBest"></div>
         <button class="primary" id="startBtn">Start drawing</button>
         <div class="past" id="pastMaps"></div>
