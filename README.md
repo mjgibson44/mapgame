@@ -102,7 +102,10 @@ in *Game names them*, Next then takes you back to where you were.
 
 - **US states and Canada:** the 50 states (DC counts as part of Maryland)
   and the 10 provinces and 3 territories, with their big lakes drawn as
-  water. The rest of the world is faded. Type names as you'd expect —
+  water and the land around faded. Unlike the continents, which share the
+  world map's projection, each is drawn the way atlases draw it, centred on
+  the country: the US in Albers equal-area with Alaska and Hawaii as insets,
+  Canada in Statistics Canada's Lambert conformal conic. Type names as you'd expect —
   "Quebec" or "Québec", "PEI", "NWT", "Newfoundland" all work — and you
   can zoom in further than on the continents, for Rhode Island and Prince
   Edward Island.
@@ -117,8 +120,10 @@ in *Game names them*, Next then takes you back to where you were.
   nothing beyond about 400 km.
 - **Results:** every country appears with its real borders, shaded green,
   yellow or red by score, with your outlines dashed on top (you can hide
-  them). Tap a country, or a name in the list, to see its score. Your best
-  total is saved for each continent, and a map in progress survives a
+  them). Tap a country, or a name in the list, to focus on it: the map
+  zooms in and hides everything else, leaving just its real border and your
+  outline for it, with its score. Tap it again, or **Show all**, to go back.
+  Your best total is saved for each map, and a map in progress survives a
   refresh.
 - **Apple Pencil (iPad):** the first time the Pencil touches the map, the
   game switches to drawing-app rules: the Pencil draws, one finger moves the
@@ -204,7 +209,7 @@ North Macedonia and North Korea under **N**, Eswatini under **E**.
 | `draw.js` | Border Draw logic: naming and drawing countries (mouse, touch, Apple Pencil), zoom, scoring, save/restore |
 | `countries.js` | The 197 countries with ISO codes and accepted aliases, and the Streak Mode map areas |
 | `map-data.js` | Generated world-map SVG paths (Natural Earth 110m data, Natural Earth projection) |
-| `map-states.js` | Generated outlines (Natural Earth 50m) of the US states and Canada's provinces and territories, and their big lakes, for Border Draw |
+| `map-states.js` | Generated Border Draw maps of the US states and Canada's provinces and territories (Natural Earth 50m), each in its own projection, with the land around and the big lakes |
 | `map-detail.js` | Generated detailed outlines (Natural Earth 10m) of the small island countries, for Streak Mode's close-ups |
 | `tools/make-map-detail.mjs` | Regenerates `map-detail.js` (instructions at the top of the file) |
 | `tools/make-map-states.mjs` | Regenerates `map-states.js` (instructions at the top of the file) |
