@@ -120,8 +120,10 @@ in *Game names them*, Next then takes you back to where you were.
   nothing beyond about 400 km.
 - **Results:** every country appears with its real borders, shaded green,
   yellow or red by score, with your outlines dashed on top (you can hide
-  them). Tap a country, or a name in the list, to see its score. Your best
-  total is saved for each continent, and a map in progress survives a
+  them). Tap a country, or a name in the list, to focus on it: the map
+  zooms in and hides everything else, leaving just its real border and your
+  outline for it, with its score. Tap it again, or **Show all**, to go back.
+  Your best total is saved for each map, and a map in progress survives a
   refresh.
 - **Apple Pencil (iPad):** the first time the Pencil touches the map, the
   game switches to drawing-app rules: the Pencil draws, one finger moves the

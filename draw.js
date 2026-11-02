@@ -69,7 +69,7 @@
     now: $("drawingNow"), nowName: $("nowName"), undo: $("undoBtn"), clear: $("clearBtn"), next: $("nextBtn"),
     done: $("doneBtn"), feedback: $("feedback"), hint: $("drawHint"), drawnList: $("drawnList"),
     end: $("endscreen"), finalScore: $("finalScore"), finalPct: $("finalPct"), showLines: $("showLines"),
-    pickInfo: $("pickInfo"), results: $("results"),
+    pickInfo: $("pickInfo"), showAll: $("showAll"), results: $("results"),
     playagain: $("playagain"), changeCont: $("changeCont"),
     map: $("map"), zoomIn: $("zoomIn"), zoomOut: $("zoomOut"), zoomFit: $("zoomFit"),
   };
@@ -740,6 +740,7 @@
 
   function setState(s) {
     state = s;
+    unfocus();
     el.guess.placeholder = `Which ${cont().host ? cont().one.split(" ")[0] : "country"} will you draw?`;
     document.body.classList.toggle("drawing", s === "draw");
     el.start.hidden = s !== "start";
@@ -828,6 +829,7 @@
       row.innerHTML = "<span></span><b></b>";
       row.firstChild.textContent = name(code);
       row.lastChild.textContent = s.drawn ? s.pts : "not drawn";
+      row.dataset.code = code;
       row.addEventListener("click", () => pick(code));
       el.results.appendChild(row);
     }
@@ -839,11 +841,19 @@
     const node = hit && hit.closest && hit.closest("[data-code]");
     const code = node && node.getAttribute("data-code");
     if (code && inMap(code)) pick(placeOf(code));
+    else if (focused) unfocus(); // a tap on the sea shows everything again
   }
 
-  // Highlights a country on the result, with your outline for it.
+  // Picking a country on the result focuses on it: every other country's
+  // shading and border and every other outline of yours are hidden, leaving
+  // its real border and your outline for it, and the map zooms to the two.
+  // Picking it again, or "Show all", brings everything back.
+  let focused = null;
   function pick(code) {
-    for (const node of el.map.querySelectorAll(".picked")) node.classList.remove("picked");
+    if (code === focused) { unfocus(); return; }
+    unfocus();
+    focused = code;
+    el.map.classList.add("focus");
     for (const [c, node] of mapNodes) if (placeOf(c) === code) {
       node.classList.add("picked");
       // on top (under a state map's lakes), so its whole outline shows
@@ -851,11 +861,36 @@
     }
     const mine = ink.querySelector(`[data-for="${code}"]`);
     if (mine) mine.classList.add("picked");
+    for (const row of el.results.children) row.classList.toggle("current", row.dataset.code === code);
+    el.showAll.hidden = false;
     const s = run.result.scores[code];
     el.pickInfo.className = s.pts >= 50 ? "ok" : "err";
     el.pickInfo.textContent = !s.drawn ? `${name(code)}: not drawn — 0 points`
       : s.overlap === undefined ? `${name(code)}: ${s.pts} points, for where you put it`
-      : `${name(code)}: ${s.pts} points — your outline overlaps it ${s.overlap}% (on land)`;
+      : `${name(code)}: ${s.pts} points — your outline (dashed) overlaps it ${s.overlap}% (on land)`;
+
+    // zoom to the country and your outline for it, with room around
+    const pts = [...loopsOf(code).flat()];
+    for (const sh of shapesOf(code)) { const b = shapeBox(sh); pts.push([b.minX, b.minY], [b.maxX, b.maxY]); }
+    if (MAP_DATA.dots[code]) pts.push(MAP_DATA.dots[code]);
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const span = Math.max((Math.max(...xs) - Math.min(...xs)) / fitView.w, (Math.max(...ys) - Math.min(...ys)) / fitView.h);
+    const w = fitView.w * Math.min(1, Math.max(span * 1.8, 0.04));
+    const h = (w * fitView.h) / fitView.w;
+    setView(clampView({ x: cx - w / 2, y: cy - h / 2, w, h }));
+  }
+
+  function unfocus() {
+    if (!focused) return;
+    focused = null;
+    el.map.classList.remove("focus");
+    for (const node of el.map.querySelectorAll(".picked")) node.classList.remove("picked");
+    for (const row of el.results.children) row.classList.remove("current");
+    el.showAll.hidden = true;
+    el.pickInfo.className = "info";
+    el.pickInfo.textContent = `Tap a ${cont().host ? cont().one.split(" ")[0] : "country"} on the map to see how you did.`;
+    if (fitView) setView(fitView);
   }
 
   function showStart() {
@@ -922,6 +957,7 @@
     renderInk();
   });
   el.next.addEventListener("click", nextCountry);
+  el.showAll.addEventListener("click", unfocus);
   el.showLines.addEventListener("change", () => ink.classList.toggle("faded", !el.showLines.checked));
   document.addEventListener("keydown", (e) => {
     if (state !== "draw" || e.target.closest("input, textarea")) return;
