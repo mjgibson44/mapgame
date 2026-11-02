@@ -390,6 +390,8 @@ button.link {
 .draw-mode #map.borderless .land.area-off { fill: var(--map-off); stroke: var(--map-off); }
 .draw-mode #map .off-map { display: none; }
 .draw-mode #map .lakes { fill: var(--map-bg); fill-rule: evenodd; stroke: none; pointer-events: none; }
+/* the US map's Alaska and Hawaii insets */
+.draw-mode #map .frame { fill: var(--map-bg); stroke: var(--map-off); stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: none; }
 /* the result: real borders, each country shaded by its score */
 .draw-mode #map .land.pts-hi, .draw-mode #map .land.pts-mid, .draw-mode #map .land.pts-lo,
 .draw-mode #map .dot.pts-hi, .draw-mode #map .dot.pts-mid, .draw-mode #map .dot.pts-lo {
